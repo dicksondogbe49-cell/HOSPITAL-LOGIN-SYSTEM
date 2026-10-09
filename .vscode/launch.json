@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Login app in Edge",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "pattern": "Login app running at (http://localhost:3000)",
+        "uriFormat": "%s",
+        "action": "debugWithEdge"
+      }
+    }
+  ]
+}

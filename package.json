@@ -1,0 +1,23 @@
+{
+  "name": "role-login-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A role-based login app with Gmail email-code verification",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --use-system-ca server.js",
+    "dev": "node --use-system-ca --watch server.js"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1147.0",
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "nodemailer": "^10.0.16"
+  }
+}

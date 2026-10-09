@@ -1,0 +1,173 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install dependencies",
+			"type": "shell",
+			"command": "npm install",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Install dependencies (bypass policy)",
+			"type": "shell",
+			"command": "powershell -ExecutionPolicy Bypass -Command \"Set-Location 'C:/Users/user/Desktop/LOGIN INFO'; npm install\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Install via cmd",
+			"type": "shell",
+			"command": "cmd /c \"cd /d \"C:\\Users\\user\\Desktop\\LOGIN INFO\" && npm install\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Install with npm.cmd",
+			"type": "shell",
+			"command": "npm.cmd install",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Start app",
+			"type": "shell",
+			"command": "npm.cmd start",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify login",
+			"type": "shell",
+			"command": "node -e \"const payload = { username: 'dicksondogbe49@gmail.com', password: 'D!I!C!K!S!O!N&' }; fetch('http://localhost:3000/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(async (r) => { const text = await r.text(); console.log('STATUS=' + r.status); console.log(text); }).catch((e) => { console.error(e); process.exit(1); });\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify login via PowerShell",
+			"type": "shell",
+			"command": "$body = @{ username = 'dicksondogbe49@gmail.com'; password = 'D!I!C!K!S!O!N&' } | ConvertTo-Json; Invoke-RestMethod -Uri http://localhost:3000/api/login -Method Post -ContentType 'application/json' -Body $body",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Restart app",
+			"type": "shell",
+			"command": "cmd /c \"taskkill /F /IM node.exe /T && cd /d \"C:\\Users\\user\\Desktop\\LOGIN INFO\" && npm.cmd start\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify role login",
+			"type": "shell",
+			"command": "$body = @{ username = 'dicksondogbe49@gmail.com'; password = 'D!I!C!K!S!O!N&'; role = 'admin' } | ConvertTo-Json; Invoke-RestMethod -Uri http://localhost:3000/api/login -Method Post -ContentType 'application/json' -Body $body",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify role enforcement",
+			"type": "shell",
+			"command": "$body = @{ username = 'dicksondogbe49@gmail.com'; password = 'D!I!C!K!S!O!N&'; role = 'doctor' } | ConvertTo-Json; Invoke-RestMethod -Uri http://localhost:3000/api/login -Method Post -ContentType 'application/json' -Body $body -ErrorAction SilentlyContinue; $LASTEXITCODE",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check running Node",
+			"type": "shell",
+			"command": "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' } | Select-Object Name, ProcessId, CommandLine | Format-Table -AutoSize",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check port 3000",
+			"type": "shell",
+			"command": "netstat -ano | findstr :3000",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Kill stale app",
+			"type": "shell",
+			"command": "taskkill /F /PID 12316 /PID 13436 /PID 8312 /T",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Start app fresh",
+			"type": "shell",
+			"command": "cmd /c \"cd /d \"C:\\Users\\user\\Desktop\\LOGIN INFO\" && npm.cmd start\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Start app via PowerShell",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { Set-Location 'C:/Users/user/Desktop/LOGIN INFO'; npm.cmd start }\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check port 3000 again",
+			"type": "shell",
+			"command": "netstat -ano | findstr :3000",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run app batch",
+			"type": "shell",
+			"command": "cmd /c \"C:\\Users\\user\\Desktop\\LOGIN INFO\\run-app.cmd\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run app batch path slash",
+			"type": "shell",
+			"command": "cmd /c \"C:/Users/user/Desktop/LOGIN INFO/run-app.cmd\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run app with escaped space",
+			"type": "shell",
+			"command": "cmd /c \"c:\\Users\\user\\Desktop\\LOGIN^ INFO\\run-app.cmd\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Validate role selection",
+			"type": "shell",
+			"command": "$valid = @{ username = 'dicksondogbe49@gmail.com'; password = 'D!I!C!K!S!O!N&'; role = 'admin' } | ConvertTo-Json; Write-Host 'VALID:'; Invoke-RestMethod -Uri http://localhost:3000/api/login -Method Post -ContentType 'application/json' -Body $valid; Write-Host ''; Write-Host 'INVALID:'; try { $invalid = @{ username = 'dicksondogbe49@gmail.com'; password = 'D!I!C!K!S!O!N&'; role = 'doctor' } | ConvertTo-Json; Invoke-RestMethod -Uri http://localhost:3000/api/login -Method Post -ContentType 'application/json' -Body $invalid -ErrorAction Stop | Out-Null; Write-Host 'unexpected success' } catch { $_.Exception.Message }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Start updated app",
+			"type": "shell",
+			"command": "cmd /c \"c:\\Users\\user\\Desktop\\LOGIN^ INFO\\run-app.cmd\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
