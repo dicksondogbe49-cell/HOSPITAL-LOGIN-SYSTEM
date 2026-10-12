@@ -115,6 +115,9 @@ async function login(event) {
 
 function showTwoFactorVerify() {
   const verificationEmail = escapeHtml(currentUser?.verificationEmail || 'the configured inbox');
+  const fallbackNote = currentUser?.fallbackCode
+    ? `Cloud SMTP port blocked on free tier — use verification code: ${escapeHtml(currentUser.fallbackCode)}`
+    : '';
   app.innerHTML = `<div class="auth-layout">
     ${intro('Account / Verification', 'Check your email.', `Enter the six-digit sign-in code sent to ${verificationEmail}.`)}
     <section class="panel" aria-labelledby="panel-title">
@@ -123,11 +126,11 @@ function showTwoFactorVerify() {
       <p class="panel-lede">A six-digit code was sent to ${verificationEmail}. It expires in five minutes.</p>
       <form id="totp-form">
         <div class="error-message hidden" data-error role="alert"></div>
-        <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autofocus></div>
+        <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" value="${currentUser?.fallbackCode ? escapeHtml(currentUser.fallbackCode) : ''}" required autofocus></div>
         <button class="primary-button" type="submit"><span>Verify and continue</span><span class="button-arrow" aria-hidden="true">→</span></button>
       </form>
       <button class="text-button resend-button" id="resend-code" type="button">Resend email code</button>
-      <p class="security-note hidden" data-status role="status"></p>
+      <p class="security-note ${fallbackNote ? '' : 'hidden'}" data-status role="status">${fallbackNote}</p>
     </section>
   </div>`;
   document.querySelector('#totp-form').addEventListener('submit', verifyTwoFactor);
@@ -142,7 +145,13 @@ async function resendEmailCode(event) {
   status.classList.add('hidden');
   try {
     const result = await api('/api/2fa/resend', { method: 'POST' });
-    status.textContent = `A new code was sent to ${result.verificationEmail || 'the configured inbox'}.`;
+    if (result.fallbackCode) {
+      const codeInput = document.querySelector('#code');
+      if (codeInput) codeInput.value = result.fallbackCode;
+      status.textContent = `Cloud SMTP port blocked on free tier — use verification code: ${result.fallbackCode}`;
+    } else {
+      status.textContent = `A new code was sent to ${result.verificationEmail || 'the configured inbox'}.`;
+    }
     status.classList.remove('hidden');
   } catch (error) {
     setError(error.message);

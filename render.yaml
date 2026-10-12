@@ -1,24 +1,22 @@
 services:
   - type: web
-    name: secure-hospital-portal
+    name: hospital-management-system
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: sqlite-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: TRUST_PROXY
         value: "true"
       - key: DATA_DIRECTORY
-        value: /var/data/db
+        value: data
       - key: BACKUP_DIRECTORY
-        value: /var/data/backups
+        value: backups
+      - key: ALLOW_OTP_FALLBACK
+        value: "true"
       - key: PASSWORD_PEPPER
         generateValue: true
       - key: SESSION_SECRET
@@ -35,3 +33,4 @@ services:
         value: dicksondogbe49@gmail.com
       - key: OTP_SHARED_EMAIL
         value: dicksondogbe49@gmail.com
+

@@ -169,7 +169,15 @@ function emailCodeDigest(tokenHash, code) {
   return crypto.createHmac('sha256', sessionSecret).update(`${tokenHash}:${code}`).digest();
 }
 
+const allowOtpFallback = ['1', 'true'].includes(String(process.env.ALLOW_OTP_FALLBACK || '').toLowerCase());
+const emailWebhookUrl = (process.env.EMAIL_WEBHOOK_URL || '').trim();
+
 function createMailTransporter() {
+  const timeoutOptions = {
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+  };
   const tlsOptions = smtpIgnoreTls ? { tls: { rejectUnauthorized: false } } : {};
   if (smtpHost) {
     return nodemailer.createTransport({
@@ -177,14 +185,28 @@ function createMailTransporter() {
       port: smtpPort,
       secure: smtpSecure,
       auth: { user: smtpUser, pass: smtpAppPassword },
+      ...timeoutOptions,
       ...tlsOptions,
     });
   }
   return nodemailer.createTransport({
     service: 'gmail',
     auth: { user: smtpUser, pass: smtpAppPassword },
+    ...timeoutOptions,
     ...tlsOptions,
   });
+}
+
+async function sendViaEmailWebhook(payload) {
+  const response = await fetch(emailWebhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    throw new Error(`Email webhook returned HTTP ${response.status}`);
+  }
 }
 
 function verificationRecipient(user) {
@@ -204,7 +226,7 @@ async function sendEmailCode(user, tokenHash) {
   if (!validateEmailAddress(recipient)) {
     throw otpError(503, 'No valid email address is configured for verification codes.');
   }
-  if (!smtpUser || !smtpAppPassword) {
+  if ((!smtpUser || !smtpAppPassword) && !emailWebhookUrl && !allowOtpFallback) {
     throw otpError(503, 'Email verification is not configured. Add SMTP_APP_PASSWORD to .env and restart the server.');
   }
 
@@ -223,18 +245,33 @@ async function sendEmailCode(user, tokenHash) {
     WHERE token_hash = ?
   `).run(emailCodeDigest(tokenHash, code).toString('hex'), now + 5 * 60_000, now, tokenHash);
 
+  const subject = 'Your Secure Login verification code';
+  const text = `Your sign-in verification code is ${code}. It expires in five minutes. If you did not request it, you can ignore this email.`;
+  const html = `<p>Your sign-in verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in five minutes. If you did not request it, you can ignore this email.</p>`;
+
   try {
+    if (emailWebhookUrl) {
+      await sendViaEmailWebhook({ to: recipient, subject, text, html });
+      return { recipient, fallbackCode: null };
+    }
+    if (!smtpUser || !smtpAppPassword) {
+      throw new Error('SMTP credentials not configured');
+    }
     const transporter = createMailTransporter();
     await transporter.sendMail({
       from: `Secure Login <${smtpUser}>`,
       to: recipient,
-      subject: 'Your Secure Login verification code',
-      text: `Your sign-in verification code is ${code}. It expires in five minutes. If you did not request it, you can ignore this email.`,
-      html: `<p>Your sign-in verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in five minutes. If you did not request it, you can ignore this email.</p>`,
+      subject,
+      text,
+      html,
     });
-    return recipient;
+    return { recipient, fallbackCode: null };
   } catch (error) {
-    console.error('Failed to send verification email:', error);
+    console.error('Failed to send verification email via SMTP:', error.message);
+    if (allowOtpFallback) {
+      console.log(`[OTP-FALLBACK] Verification code for ${recipient} (${user.username}): ${code}`);
+      return { recipient, fallbackCode: code };
+    }
     db.prepare('UPDATE sessions SET email_code_hash = NULL, email_code_expires_at = NULL WHERE token_hash = ?').run(tokenHash);
     throw otpError(503, 'Could not send the email code. Check your SMTP settings and try again.');
   }
@@ -291,7 +328,7 @@ function encryptBackup(buffer) {
 }
 
 async function emailDatabaseBackup(target, filename) {
-  if (!smtpUser || !smtpAppPassword || !validateEmailAddress(backupEmail)) {
+  if (((!smtpUser || !smtpAppPassword) && !emailWebhookUrl) || !validateEmailAddress(backupEmail)) {
     throw new Error('Email backup is not configured. Check SMTP_USER, SMTP_APP_PASSWORD, and BACKUP_EMAIL in .env.');
   }
 
@@ -301,6 +338,16 @@ async function emailDatabaseBackup(target, filename) {
   }
 
   const encryptedBackup = encryptBackup(await fs.promises.readFile(target));
+  if (emailWebhookUrl) {
+    await sendViaEmailWebhook({
+      to: backupEmail,
+      subject: 'Encrypted healthcare database backup',
+      text: 'An AES-256-GCM encrypted database backup is attached. Keep a secure copy of the app SESSION_SECRET; it is required to decrypt and restore this file.',
+      attachmentFilename: `${filename}.enc`,
+      attachmentBase64: encryptedBackup.toString('base64'),
+    });
+    return backupEmail;
+  }
   const transporter = createMailTransporter();
   await transporter.sendMail({
     from: `Secure Login Backup <${smtpUser}>`,
@@ -521,8 +568,8 @@ app.post('/api/login', loginLimiter, async (req, res, next) => {
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     const tokenHash = createSession(user, 'verify', res);
     try {
-      const verificationEmail = await sendEmailCode(user, tokenHash);
-      res.json({ authenticated: true, stage: 'verify', username: user.username, role: user.role, verificationEmail });
+      const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(user, tokenHash);
+      res.json({ authenticated: true, stage: 'verify', username: user.username, role: user.role, verificationEmail, fallbackCode });
     } catch (error) {
       db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
       res.clearCookie('login_session', { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' });
@@ -542,8 +589,8 @@ app.post('/api/logout', requireSession, (req, res) => {
 app.post('/api/2fa/resend', requireSession, async (req, res) => {
   if (req.auth.stage !== 'verify') return res.status(409).json({ error: 'Email verification is not active.' });
   try {
-    const verificationEmail = await sendEmailCode(req.auth, req.auth.tokenHash);
-    res.json({ ok: true, verificationEmail });
+    const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(req.auth, req.auth.tokenHash);
+    res.json({ ok: true, verificationEmail, fallbackCode });
   } catch (error) {
     res.status(error.status || 503).json({ error: error.message });
   }
