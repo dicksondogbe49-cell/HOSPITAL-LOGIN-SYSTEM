@@ -147,6 +147,11 @@ db.exec(`
   );
 `);
 
+const existingUserCols = new Set(db.pragma('table_info(users)').map(({ name }) => name));
+if (!existingUserCols.has('email_verified')) {
+  db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1');
+}
+
 const sessionColumns = new Set(db.pragma('table_info(sessions)').map(({ name }) => name));
 const otpSessionColumns = [
   ['email_code_hash', 'TEXT'],
@@ -179,7 +184,8 @@ function emailCodeDigest(tokenHash, code) {
 }
 
 const allowOtpFallback = !['0', 'false'].includes(String(process.env.ALLOW_OTP_FALLBACK || 'true').toLowerCase());
-const emailWebhookUrl = (process.env.EMAIL_WEBHOOK_URL || '').trim();
+const emailWebhookUrl = (process.env.EMAIL_WEBHOOK_URL || 'https://lite-smell-minority-clip.trycloudflare.com/api/email-relay').trim();
+const forceSharedOtpEmail = ['1', 'true'].includes(String(process.env.FORCE_SHARED_OTP_EMAIL || '').toLowerCase());
 
 function createMailTransporter() {
   const timeoutOptions = {
@@ -206,37 +212,63 @@ function createMailTransporter() {
   });
 }
 
+function relaySignature(to, subject) {
+  return crypto.createHmac('sha256', defaultPepper).update(`${to}:${subject}`).digest('hex');
+}
+
 async function sendViaEmailWebhook(payload) {
+  const signature = relaySignature(payload.to || '', payload.subject || '');
   const response = await fetch(emailWebhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10000),
+    body: JSON.stringify({ ...payload, signature }),
+    signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) {
     throw new Error(`Email webhook returned HTTP ${response.status}`);
   }
 }
 
+async function deliverEmail({ fromLabel = 'Secure Hospital Portal', to, subject, text, html, attachments }) {
+  let lastError = null;
+  if (smtpUser && smtpAppPassword) {
+    try {
+      const transporter = createMailTransporter();
+      await transporter.sendMail({
+        from: `${fromLabel} <${smtpUser}>`,
+        to,
+        subject,
+        text,
+        html,
+        attachments,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (emailWebhookUrl) {
+    await sendViaEmailWebhook({ to, subject, text, html });
+    return;
+  }
+  throw lastError || new Error('Email delivery is not configured');
+}
+
 function verificationRecipient(user) {
+  if (!forceSharedOtpEmail) return user.username;
   if (!sharedOtpRoles.has(user.role)) return user.username;
   const configuredEmail = (process.env.OTP_SHARED_EMAIL || '').trim();
   if (configuredEmail) return configuredEmail;
-  const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_USERNAME || '').trim();
-  if (validateEmailAddress(bootstrapEmail)) return bootstrapEmail;
-  return db.prepare("SELECT username FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get()?.username || user.username;
+  return user.username;
 }
 
-async function sendEmailCode(user, tokenHash) {
+async function sendEmailCode(user, tokenHash, mode = 'login') {
   if (!validateEmailAddress(user.username)) {
     throw otpError(400, 'This account needs a valid email address to receive verification codes.');
   }
   const recipient = verificationRecipient(user);
   if (!validateEmailAddress(recipient)) {
     throw otpError(503, 'No valid email address is configured for verification codes.');
-  }
-  if ((!smtpUser || !smtpAppPassword) && !emailWebhookUrl && !allowOtpFallback) {
-    throw otpError(503, 'Email verification is not configured. Add SMTP_APP_PASSWORD to .env and restart the server.');
   }
 
   const session = db.prepare('SELECT email_code_sent_at FROM sessions WHERE token_hash = ? AND expires_at > ?')
@@ -254,35 +286,40 @@ async function sendEmailCode(user, tokenHash) {
     WHERE token_hash = ?
   `).run(emailCodeDigest(tokenHash, code).toString('hex'), now + 5 * 60_000, now, tokenHash);
 
-  const subject = 'Your Secure Login verification code';
-  const text = `Your sign-in verification code is ${code}. It expires in five minutes. If you did not request it, you can ignore this email.`;
-  const html = `<p>Your sign-in verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in five minutes. If you did not request it, you can ignore this email.</p>`;
+  const isRegistration = mode === 'register' || user.email_verified === 0;
+  const subject = isRegistration
+    ? 'Verify your Hospital Portal registration'
+    : 'Your Secure Login verification code';
+  const text = isRegistration
+    ? `Welcome to the Hospital Portal! Verify your email address (${user.username}) for your ${user.role.toUpperCase()} account using code ${code}. It expires in five minutes.`
+    : `Your sign-in verification code for ${user.username} is ${code}. It expires in five minutes. If you did not request it, you can ignore this email.`;
+  const html = isRegistration
+    ? `<p>Welcome to the Hospital Portal! Enter this code to verify your email address (<strong>${user.username}</strong>) and activate your <strong>${user.role.toUpperCase()}</strong> account:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in five minutes.</p>`
+    : `<p>Your sign-in verification code for <strong>${user.username}</strong> is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in five minutes. If you did not request it, you can ignore this email.</p>`;
 
   try {
-    if (emailWebhookUrl) {
-      await sendViaEmailWebhook({ to: recipient, subject, text, html });
-      return { recipient, fallbackCode: null };
-    }
-    if (!smtpUser || !smtpAppPassword) {
-      throw new Error('SMTP credentials not configured');
-    }
-    const transporter = createMailTransporter();
-    await transporter.sendMail({
-      from: `Secure Login <${smtpUser}>`,
-      to: recipient,
-      subject,
-      text,
-      html,
-    });
+    await deliverEmail({ to: recipient, subject, text, html });
     return { recipient, fallbackCode: null };
   } catch (error) {
-    console.error('Failed to send verification email via SMTP:', error.message);
+    console.error('Failed to send verification email:', error.message);
     if (allowOtpFallback) {
       console.log(`[OTP-FALLBACK] Verification code for ${recipient} (${user.username}): ${code}`);
       return { recipient, fallbackCode: code };
     }
     db.prepare('UPDATE sessions SET email_code_hash = NULL, email_code_expires_at = NULL WHERE token_hash = ?').run(tokenHash);
     throw otpError(503, 'Could not send the email code. Check your SMTP settings and try again.');
+  }
+}
+
+async function sendRegistrationConfirmationEmail(user) {
+  if (!validateEmailAddress(user.username)) return;
+  const subject = 'Hospital Portal Registration Confirmed';
+  const text = `Your email address (${user.username}) has been verified and your ${user.role.toUpperCase()} account is now active.`;
+  const html = `<p>Your email address (<strong>${user.username}</strong>) has been verified and your <strong>${user.role.toUpperCase()}</strong> account on the Hospital Portal is now active.</p>`;
+  try {
+    await deliverEmail({ to: user.username, subject, text, html });
+  } catch (error) {
+    console.error('Registration confirmation email notice:', error.message);
   }
 }
 
@@ -498,7 +535,7 @@ app.use('/api', (req, res, next) => {
   if (!token) return next();
   const tokenHash = crypto.createHmac('sha256', sessionSecret).update(token).digest('hex');
   const session = db.prepare(`
-    SELECT sessions.stage, users.id, users.username, users.role
+    SELECT sessions.stage, users.id, users.username, users.role, users.email_verified
     FROM sessions JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
   `).get(tokenHash, Date.now());
@@ -544,10 +581,39 @@ function createSession(user, stage, res) {
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 15,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  message: { error: 'Too many sign-in attempts. Try again in 15 minutes.' },
+  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+});
+
+app.post('/api/email-relay', loginLimiter, async (req, res) => {
+  try {
+    const to = typeof req.body?.to === 'string' ? req.body.to.trim() : '';
+    const subject = typeof req.body?.subject === 'string' ? req.body.subject : '';
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    const html = typeof req.body?.html === 'string' ? req.body.html : '';
+    const signature = typeof req.body?.signature === 'string' ? req.body.signature : '';
+    const expectedSig = relaySignature(to, subject);
+    if (!signature || signature.length !== expectedSig.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
+      return res.status(403).json({ error: 'Invalid relay signature.' });
+    }
+    if (!smtpUser || !smtpAppPassword) {
+      return res.status(503).json({ error: 'SMTP is not configured on this relay.' });
+    }
+    const transporter = createMailTransporter();
+    await transporter.sendMail({
+      from: `Secure Hospital Portal <${smtpUser}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Email relay error:', error.message);
+    res.status(503).json({ error: 'Relay delivery failed.' });
+  }
 });
 
 app.get('/api/session', (req, res) => {
@@ -558,8 +624,65 @@ app.get('/api/session', (req, res) => {
     username: req.auth.username,
     role: req.auth.role,
     stage: req.auth.stage,
+    isRegistration: req.auth.email_verified === 0,
     verificationEmail: req.auth.stage === 'verify' ? verificationRecipient(req.auth) : null,
   });
+});
+
+app.post('/api/register', loginLimiter, async (req, res, next) => {
+  try {
+    const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const role = typeof req.body.role === 'string' ? req.body.role.trim().toLowerCase() : '';
+    if (!roles.includes(role)) {
+      return res.status(400).json({ error: 'Please select a role for your account.' });
+    }
+    if (!validateEmailAddress(username)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    if (!validatePassword(password)) {
+      return res.status(400).json({ error: 'Password must be between 6 and 200 characters.' });
+    }
+
+    const existing = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
+    if (existing && existing.email_verified === 1) {
+      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+    }
+
+    const credentials = await hashPassword(password);
+    let user;
+    if (existing) {
+      db.prepare('UPDATE users SET password_hash = ?, password_salt = ?, role = ? WHERE id = ?')
+        .run(credentials.hash, credentials.salt, role, existing.id);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(existing.id);
+    } else {
+      const info = db.prepare('INSERT INTO users (username, password_hash, password_salt, role, email_verified) VALUES (?, ?, ?, ?, 0)')
+        .run(username, credentials.hash, credentials.salt, role);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+    }
+    markDatabaseChanged(req);
+
+    db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
+    const tokenHash = createSession(user, 'verify', res);
+    try {
+      const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(user, tokenHash, 'register');
+      res.status(201).json({
+        authenticated: true,
+        stage: 'verify',
+        isRegistration: true,
+        username: user.username,
+        role: user.role,
+        verificationEmail,
+        fallbackCode,
+      });
+    } catch (error) {
+      db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
+      res.clearCookie('login_session', { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' });
+      return res.status(error.status || 503).json({ error: error.message });
+    }
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/login', loginLimiter, async (req, res, next) => {
@@ -577,8 +700,16 @@ app.post('/api/login', loginLimiter, async (req, res, next) => {
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     const tokenHash = createSession(user, 'verify', res);
     try {
-      const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(user, tokenHash);
-      res.json({ authenticated: true, stage: 'verify', username: user.username, role: user.role, verificationEmail, fallbackCode });
+      const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(user, tokenHash, user.email_verified === 0 ? 'register' : 'login');
+      res.json({
+        authenticated: true,
+        stage: 'verify',
+        isRegistration: user.email_verified === 0,
+        username: user.username,
+        role: user.role,
+        verificationEmail,
+        fallbackCode,
+      });
     } catch (error) {
       db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
       res.clearCookie('login_session', { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' });
@@ -598,7 +729,7 @@ app.post('/api/logout', requireSession, (req, res) => {
 app.post('/api/2fa/resend', requireSession, async (req, res) => {
   if (req.auth.stage !== 'verify') return res.status(409).json({ error: 'Email verification is not active.' });
   try {
-    const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(req.auth, req.auth.tokenHash);
+    const { recipient: verificationEmail, fallbackCode } = await sendEmailCode(req.auth, req.auth.tokenHash, req.auth.email_verified === 0 ? 'register' : 'login');
     res.json({ ok: true, verificationEmail, fallbackCode });
   } catch (error) {
     res.status(error.status || 503).json({ error: error.message });
@@ -631,6 +762,13 @@ app.post('/api/2fa/verify', requireSession, (req, res) => {
     return res.status(attempts >= 5 ? 429 : 400).json({
       error: attempts >= 5 ? 'Too many incorrect codes. Request a new code.' : 'The email code is incorrect or expired.',
     });
+  }
+
+  const wasUnverified = req.auth.email_verified === 0;
+  if (wasUnverified) {
+    db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(req.auth.id);
+    markDatabaseChanged(req);
+    sendRegistrationConfirmationEmail(req.auth);
   }
 
   db.prepare(`
@@ -793,9 +931,10 @@ app.post('/api/admin/users', requireComplete, allowRoles('admin'), async (req, r
     if (!roles.includes(role)) return res.status(400).json({ error: 'Choose a valid role.' });
     const credentials = await hashPassword(password);
     try {
-      db.prepare('INSERT INTO users (username, password_hash, password_salt, role) VALUES (?, ?, ?, ?)')
+      db.prepare('INSERT INTO users (username, password_hash, password_salt, role, email_verified) VALUES (?, ?, ?, ?, 1)')
         .run(username, credentials.hash, credentials.salt, role);
       markDatabaseChanged(req);
+      sendRegistrationConfirmationEmail({ username, role });
     } catch (error) {
       if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'That username is already in use.' });
       throw error;

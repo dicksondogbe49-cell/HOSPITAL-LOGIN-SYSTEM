@@ -57,7 +57,7 @@ function showLogin() {
   document.body.classList.remove('doctor-theme');
   document.body.classList.remove('patient-theme');
   app.innerHTML = `<div class="auth-layout">
-    ${intro('Account / Access', 'Your work, in the right hands.', 'Sign in to your workspace with your account credentials. Two-step verification keeps every account protected.')}
+    ${intro('Account / Access', 'Your work, in the right hands.', 'Sign in or register with your own verified email address. Every registration and sign-in activity is verified directly through your personal inbox.')}
     <section class="panel" aria-labelledby="panel-title">
       <div class="panel-label"><span>Account access</span><span class="step-number">01 / 03</span></div>
       <h2 id="panel-title">Welcome back</h2>
@@ -76,14 +76,86 @@ function showLogin() {
             <option value="imputor">IMPUTOR</option>
           </select>
         </div>
-        <div class="field"><label for="username">Email address</label><input id="username" name="username" type="email" autocomplete="username" required maxlength="254" autofocus></div>
+        <div class="field"><label for="username">Your email address</label><input id="username" name="username" type="email" autocomplete="username" required maxlength="254" autofocus></div>
         <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required minlength="6"></div>
-        <p class="password-hint">Use the account provided by your workspace administrator.</p>
+        <p class="password-hint">A 6-digit verification code will be sent directly to your email address.</p>
         <button class="primary-button" type="submit"><span>Continue securely</span><span class="button-arrow" aria-hidden="true">→</span></button>
       </form>
+      <button class="text-button resend-button" id="go-register" type="button">New here? Register with your email</button>
     </section>
   </div>`;
   document.querySelector('#login-form').addEventListener('submit', login);
+  document.querySelector('#go-register').addEventListener('click', showRegister);
+}
+
+function showRegister() {
+  currentUser = null;
+  document.body.classList.remove('admin-theme');
+  document.body.classList.remove('doctor-theme');
+  document.body.classList.remove('patient-theme');
+  app.innerHTML = `<div class="auth-layout">
+    ${intro('Account / Registration', 'Create your verified account.', 'Register using your own email address. We will send a 6-digit verification code to your email to verify ownership and activate your workspace.')}
+    <section class="panel" aria-labelledby="panel-title">
+      <div class="panel-label"><span>Email registration</span><span class="step-number">01 / 03</span></div>
+      <h2 id="panel-title">Register account</h2>
+      <p class="panel-lede">Select your role and enter your own email address to receive your verification code.</p>
+      <form id="register-form">
+        <div class="error-message hidden" data-error role="alert"></div>
+        <div class="field">
+          <label for="reg-role">Role</label>
+          <select id="reg-role" name="role" required>
+            <option value="">Select your role</option>
+            <option value="patient">PATIENT</option>
+            <option value="doctor">DOCTOR</option>
+            <option value="nurse">NURSE</option>
+            <option value="manager">MANAGER</option>
+            <option value="imputor">IMPUTOR</option>
+            <option value="admin">ADMIN</option>
+          </select>
+        </div>
+        <div class="field"><label for="reg-username">Your email address</label><input id="reg-username" name="username" type="email" autocomplete="email" placeholder="you@example.com" required maxlength="254" autofocus></div>
+        <div class="field"><label for="reg-password">Create password</label><input id="reg-password" name="password" type="password" autocomplete="new-password" required minlength="6" maxlength="200"></div>
+        <div class="field"><label for="reg-confirm-password">Confirm password</label><input id="reg-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required minlength="6" maxlength="200"></div>
+        <p class="password-hint">Minimum 6 characters. All registration and login codes will be sent to your email.</p>
+        <button class="primary-button" type="submit"><span>Register &amp; verify email</span><span class="button-arrow" aria-hidden="true">→</span></button>
+      </form>
+      <button class="text-button resend-button" id="go-login" type="button">Already have an account? Sign in</button>
+    </section>
+  </div>`;
+  document.querySelector('#register-form').addEventListener('submit', register);
+  document.querySelector('#go-login').addEventListener('click', showLogin);
+}
+
+async function register(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  clearError();
+  try {
+    const role = String(form.get('role') || '').trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(roleLabels, role)) {
+      throw new Error('Please select a role for your account.');
+    }
+    const password = String(form.get('password') || '');
+    const confirmPassword = String(form.get('confirmPassword') || '');
+    if (password !== confirmPassword) {
+      throw new Error('Passwords do not match.');
+    }
+    const result = await api('/api/register', {
+      method: 'POST',
+      body: {
+        username: form.get('username'),
+        password,
+        role,
+      },
+    });
+    currentUser = result;
+    showTwoFactorVerify();
+  } catch (error) {
+    setError(error.message);
+    button.disabled = false;
+  }
 }
 
 async function login(event) {
@@ -114,27 +186,36 @@ async function login(event) {
 }
 
 function showTwoFactorVerify() {
-  const verificationEmail = escapeHtml(currentUser?.verificationEmail || 'the configured inbox');
+  const verificationEmail = escapeHtml(currentUser?.verificationEmail || currentUser?.username || 'your email inbox');
+  const isRegistration = Boolean(currentUser?.isRegistration);
   const fallbackNote = currentUser?.fallbackCode
-    ? `Cloud SMTP port blocked on free tier — use verification code: ${escapeHtml(currentUser.fallbackCode)}`
+    ? `Fallback verification code for ${verificationEmail}: ${escapeHtml(currentUser.fallbackCode)}`
     : '';
   app.innerHTML = `<div class="auth-layout">
-    ${intro('Account / Verification', 'Check your email.', `Enter the six-digit sign-in code sent to ${verificationEmail}.`)}
+    ${intro(
+      isRegistration ? 'Registration / Email Verification' : 'Account / Verification',
+      'Check your email.',
+      isRegistration
+        ? `Enter the six-digit registration code sent to ${verificationEmail} to verify ownership and activate your account.`
+        : `Enter the six-digit sign-in code sent to ${verificationEmail}.`,
+    )}
     <section class="panel" aria-labelledby="panel-title">
-      <div class="panel-label"><span>Two-step verification</span><span class="step-number">02 / 03</span></div>
-      <h2 id="panel-title">Enter your code</h2>
-      <p class="panel-lede">A six-digit code was sent to ${verificationEmail}. It expires in five minutes.</p>
+      <div class="panel-label"><span>${isRegistration ? 'Verify your email' : 'Two-step verification'}</span><span class="step-number">02 / 03</span></div>
+      <h2 id="panel-title">${isRegistration ? 'Confirm registration' : 'Enter your code'}</h2>
+      <p class="panel-lede">A six-digit code was sent to <strong>${verificationEmail}</strong>. It expires in five minutes.</p>
       <form id="totp-form">
         <div class="error-message hidden" data-error role="alert"></div>
         <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" value="${currentUser?.fallbackCode ? escapeHtml(currentUser.fallbackCode) : ''}" required autofocus></div>
-        <button class="primary-button" type="submit"><span>Verify and continue</span><span class="button-arrow" aria-hidden="true">→</span></button>
+        <button class="primary-button" type="submit"><span>${isRegistration ? 'Verify email &amp; complete registration' : 'Verify and continue'}</span><span class="button-arrow" aria-hidden="true">→</span></button>
       </form>
-      <button class="text-button resend-button" id="resend-code" type="button">Resend email code</button>
+      <button class="text-button resend-button" id="resend-code" type="button">Resend code to ${verificationEmail}</button>
+      <button class="text-button resend-button" id="cancel-verify" type="button">Use a different email address</button>
       <p class="security-note ${fallbackNote ? '' : 'hidden'}" data-status role="status">${fallbackNote}</p>
     </section>
   </div>`;
   document.querySelector('#totp-form').addEventListener('submit', verifyTwoFactor);
   document.querySelector('#resend-code').addEventListener('click', resendEmailCode);
+  document.querySelector('#cancel-verify').addEventListener('click', logout);
 }
 
 async function resendEmailCode(event) {
@@ -148,9 +229,9 @@ async function resendEmailCode(event) {
     if (result.fallbackCode) {
       const codeInput = document.querySelector('#code');
       if (codeInput) codeInput.value = result.fallbackCode;
-      status.textContent = `Cloud SMTP port blocked on free tier — use verification code: ${result.fallbackCode}`;
+      status.textContent = `Fallback verification code: ${result.fallbackCode}`;
     } else {
-      status.textContent = `A new code was sent to ${result.verificationEmail || 'the configured inbox'}.`;
+      status.textContent = `A new code was sent to ${result.verificationEmail || currentUser?.username || 'your email inbox'}.`;
     }
     status.classList.remove('hidden');
   } catch (error) {
