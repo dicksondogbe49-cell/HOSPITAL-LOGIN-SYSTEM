@@ -1,2 +1,3 @@
-cd /d "C:\Users\user\Desktop\LOGIN INFO"
+@echo off
+cd /d "%~dp0"
 npm.cmd start

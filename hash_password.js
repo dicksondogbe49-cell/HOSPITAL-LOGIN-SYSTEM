@@ -1,10 +1,21 @@
+require('dotenv').config();
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
 const scrypt = promisify(crypto.scrypt);
 
+const password = process.argv[2];
+if (!password) {
+  console.error('Usage: node hash_password.js <password>');
+  process.exit(1);
+}
+
+const pepper = process.env.PASSWORD_PEPPER || '';
+if (pepper.length < 32) {
+  console.error('Set PASSWORD_PEPPER (at least 32 characters) in .env before hashing.');
+  process.exit(1);
+}
+
 (async () => {
-  const password = 'D!I!C!K!S!O!N&';
-  const pepper = '12345678901234567890123456789012';
   const salt = crypto.randomBytes(16);
   const derived = await scrypt(password + pepper, salt, 64, {
     N: 32768,
@@ -14,7 +25,6 @@ const scrypt = promisify(crypto.scrypt);
   });
 
   console.log(JSON.stringify({
-    password,
     password_salt: salt.toString('hex'),
     password_hash: derived.toString('hex'),
   }, null, 2));

@@ -72,6 +72,8 @@ function showLogin() {
             <option value="nurse">NURSE</option>
             <option value="doctor">DOCTOR</option>
             <option value="patient">PATIENT</option>
+            <option value="manager">MANAGER</option>
+            <option value="imputor">IMPUTOR</option>
           </select>
         </div>
         <div class="field"><label for="username">Email address</label><input id="username" name="username" type="email" autocomplete="username" required maxlength="254" autofocus></div>
@@ -92,7 +94,7 @@ async function login(event) {
   clearError();
   try {
     const role = String(form.get('role') || '').trim().toLowerCase();
-    if (!['admin', 'nurse', 'doctor', 'patient'].includes(role)) {
+    if (!Object.prototype.hasOwnProperty.call(roleLabels, role)) {
       throw new Error('Please select your role before signing in.');
     }
     const result = await api('/api/login', {
@@ -215,6 +217,8 @@ async function renderWorkspace() {
               <option value="nurse">Nurse</option>
               <option value="patient">Patient</option>
               <option value="admin">Administrator</option>
+              <option value="manager">Manager</option>
+              <option value="imputor">Imputor</option>
             </select>
           </div>
           <p class="password-hint">Doctor, Nurse, and Patient sign-in codes go to the shared verification inbox.</p>
@@ -224,8 +228,12 @@ async function renderWorkspace() {
 
       sections += section('System Backup', `
         <div class="error-message hidden" data-error role="alert"></div>
-        <p class="password-hint">A local snapshot and encrypted Gmail backup are queued after each successful data change. Use this button to send one now.</p>
-        <button class="primary-button" id="system-backup-button" type="button"><span>Backup now</span><span class="button-arrow" aria-hidden="true">↓</span></button>
+        <p class="password-hint">A local snapshot and encrypted email backup are queued after each successful data change. Download an encrypted copy to this PC for offline storage.</p>
+        <button class="primary-button" id="offline-backup-button" type="button"><span>Download offline backup</span><span class="button-arrow" aria-hidden="true">↓</span></button>
+        <p class="security-note hidden" data-offline-backup-status role="status"></p>
+        <p class="password-hint">Keep the original SESSION_SECRET; it is required to decrypt this backup.</p>
+        <div class="form-divider"></div>
+        <button class="primary-button" id="system-backup-button" type="button"><span>Email backup now</span><span class="button-arrow" aria-hidden="true">↓</span></button>
         <p class="security-note hidden" data-backup-status role="status"></p>
         <div class="form-divider"></div>
         <form id="cloud-backup-form">
@@ -240,7 +248,8 @@ async function renderWorkspace() {
         </form>
       `);
 
-      sections += section('Accounts Directory', '<div class="loading-state"><span class="loader"></span><span>Loading accounts</span></div>', true);
+      sections += section('Accounts Directory', '<div class="loading-state"><span class="loader"></span><span>Loading accounts</span></div>', true, 'js-users-section');
+      sections += section('Patient Consultation & Support Requests', '<div class="loading-state"><span class="loader"></span><span>Loading patient requests</span></div>', true, 'js-staff-requests-section');
     } else if (role === 'doctor') {
       sections += section("Doctor's Overview", `
         <div class="doctor-overview-layout">
@@ -280,7 +289,8 @@ async function renderWorkspace() {
         </form>
       `, true);
 
-      sections += section('Recent Consultation Records', '<div class="loading-state"><span class="loader"></span><span>Loading clinical records</span></div>', true);
+      sections += section('Recent Consultation Records', '<div class="loading-state"><span class="loader"></span><span>Loading clinical records</span></div>', true, 'js-doctor-records-section');
+      sections += section('Patient Consultation & Support Requests', '<div class="loading-state"><span class="loader"></span><span>Loading patient requests</span></div>', true, 'js-staff-requests-section');
     } else if (role === 'nurse') {
       sections += section("Nurse's Station Overview", `
         <div class="metric-row">
@@ -318,7 +328,8 @@ async function renderWorkspace() {
         </form>
       `);
 
-      sections += section('Recent Vitals Logs', '<div class="loading-state"><span class="loader"></span><span>Loading vitals logs</span></div>', true);
+      sections += section('Recent Vitals Logs', '<div class="loading-state"><span class="loader"></span><span>Loading vitals logs</span></div>', true, 'js-nurse-vitals-section');
+      sections += section('Patient Consultation & Support Requests', '<div class="loading-state"><span class="loader"></span><span>Loading patient requests</span></div>', true, 'js-staff-requests-section');
     } else if (role === 'patient') {
       sections += `<section class="workspace-section patient-overview-card">
         <figure class="patient-care-photo"><img src="/img/PATIENT%201.jpg" alt="Patient resting in a hospital bed"></figure>
@@ -375,16 +386,20 @@ async function renderWorkspace() {
     document.querySelector('#logout-button').addEventListener('click', logout);
 
     if (role === 'admin') {
+      document.querySelector('#offline-backup-button')?.addEventListener('click', downloadOfflineBackup);
       document.querySelector('#system-backup-button')?.addEventListener('click', createSystemBackup);
       document.querySelector('#cloud-backup-form')?.addEventListener('submit', createCloudBackup);
       document.querySelector('#create-user-form')?.addEventListener('submit', createUser);
       loadUsers();
+      loadStaffPatientRequests();
     } else if (role === 'doctor') {
       document.querySelector('#doctor-record-form')?.addEventListener('submit', createDoctorRecord);
       loadDoctorData();
+      loadStaffPatientRequests();
     } else if (role === 'nurse') {
       document.querySelector('#nurse-vitals-form')?.addEventListener('submit', createNurseVitals);
       loadNurseData();
+      loadStaffPatientRequests();
     } else if (role === 'patient') {
       document.querySelector('#patient-request-form')?.addEventListener('submit', createPatientRequest);
       loadPatientData();
@@ -400,9 +415,35 @@ async function renderWorkspace() {
   }
 }
 
+async function loadStaffPatientRequests() {
+  const container = document.querySelector('.js-staff-requests-section');
+  if (!container) return;
+  try {
+    const { requests } = await api('/api/staff/patient-requests');
+    const rows = requests.length
+      ? requests.map((r) => `<tr>
+          <td><strong>${escapeHtml(r.patient_email)}</strong></td>
+          <td><span class="role-tag role-patient">${escapeHtml(r.subject)}</span></td>
+          <td>${escapeHtml(r.message)}</td>
+          <td>${escapeHtml(r.created_at)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty-state">No patient consultation or support requests submitted yet.</td></tr>';
+
+    container.innerHTML = `<div class="section-heading"><h2>Patient Consultation &amp; Support Requests</h2><span class="section-count">${requests.length} total</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Patient</th><th>Subject</th><th>Message</th><th>Date</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  } catch (error) {
+    container.innerHTML = `<p class="error-message">${escapeHtml(error.message)}</p>`;
+  }
+}
+
 // Admin Loader
 async function loadUsers() {
-  const container = document.querySelector('.workspace-section.full-width');
+  const container = document.querySelector('.js-users-section') || document.querySelector('.workspace-section.full-width');
   if (!container) return;
   try {
     const { users } = await api('/api/admin/users');
@@ -484,6 +525,52 @@ async function createSystemBackup() {
   }
 }
 
+async function downloadOfflineBackup() {
+  const button = document.querySelector('#offline-backup-button');
+  const status = document.querySelector('[data-offline-backup-status]');
+  const error = document.querySelector('[data-error]');
+  if (!button || !status) return;
+
+  button.disabled = true;
+  if (error) {
+    error.textContent = '';
+    error.classList.add('hidden');
+  }
+  status.classList.add('hidden');
+
+  try {
+    const response = await fetch('/api/admin/backup/download', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || `Backup download failed (HTTP ${response.status}).`);
+    }
+
+    const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/i)?.[1]
+      || 'healthcare-backup.db.enc';
+    const downloadUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+    status.textContent = 'Encrypted backup download started. Keep the original SESSION_SECRET to decrypt it.';
+    status.classList.remove('hidden');
+  } catch (backupError) {
+    if (error) {
+      error.textContent = backupError.message;
+      error.classList.remove('hidden');
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function createCloudBackup(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -524,7 +611,7 @@ async function loadDoctorData() {
         : `<option value="">No registered patients yet</option>`;
     }
 
-    const container = document.querySelector('.workspace-section.full-width');
+    const container = document.querySelector('.js-doctor-records-section') || document.querySelector('.workspace-section.full-width');
     if (container) {
       const rows = records.length
         ? records.map((r) => `<tr>
@@ -578,7 +665,7 @@ async function loadNurseData() {
         : `<option value="">No registered patients yet</option>`;
     }
 
-    const container = document.querySelector('.workspace-section.full-width');
+    const container = document.querySelector('.js-nurse-vitals-section') || document.querySelector('.workspace-section.full-width');
     if (container) {
       const rows = vitals.length
         ? vitals.map((v) => `<tr>

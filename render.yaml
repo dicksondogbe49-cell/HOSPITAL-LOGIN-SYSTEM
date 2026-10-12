@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: secure-hospital-portal
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: sqlite-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DATA_DIRECTORY
+        value: /var/data/db
+      - key: BACKUP_DIRECTORY
+        value: /var/data/backups
+      - key: PASSWORD_PEPPER
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: BOOTSTRAP_ADMIN_USERNAME
+        value: dicksondogbe49@gmail.com
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_USER
+        value: dicksondogbe49@gmail.com
+      - key: SMTP_APP_PASSWORD
+        sync: false
+      - key: BACKUP_EMAIL
+        value: dicksondogbe49@gmail.com
+      - key: OTP_SHARED_EMAIL
+        value: dicksondogbe49@gmail.com

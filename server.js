@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
 const Database = require('better-sqlite3');
@@ -15,14 +16,23 @@ const scrypt = promisify(crypto.scrypt);
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === 'production';
+const trustProxy = isProduction || ['1', 'true'].includes(String(process.env.TRUST_PROXY || '').toLowerCase());
 const roles = ['admin', 'doctor', 'nurse', 'patient', 'manager', 'imputor'];
-const sharedOtpRoles = new Set(['doctor', 'nurse', 'patient']);
+const sharedOtpRoles = new Set(['doctor', 'nurse', 'patient', 'manager', 'imputor']);
 const passwordPepper = process.env.PASSWORD_PEPPER || '';
 const sessionSecret = process.env.SESSION_SECRET || '';
+const smtpHost = (process.env.SMTP_HOST || '').trim();
+const smtpPort = Number(process.env.SMTP_PORT || 465);
+const smtpSecure = process.env.SMTP_SECURE ? ['1', 'true'].includes(String(process.env.SMTP_SECURE).toLowerCase()) : smtpPort === 465;
+const smtpIgnoreTls = ['1', 'true'].includes(String(process.env.SMTP_IGNORE_TLS || '').toLowerCase());
 const smtpUser = (process.env.SMTP_USER || process.env.BOOTSTRAP_ADMIN_USERNAME || '').trim();
-const smtpAppPassword = (process.env.SMTP_APP_PASSWORD || '').replace(/\s/g, '');
+const smtpAppPassword = smtpHost
+  ? (process.env.SMTP_APP_PASSWORD || '').trim()
+  : (process.env.SMTP_APP_PASSWORD || '').replace(/\s/g, '');
 const backupEmail = (process.env.BACKUP_EMAIL || process.env.BOOTSTRAP_ADMIN_USERNAME || '').trim();
+const configuredDataDirectory = (process.env.DATA_DIRECTORY || 'data').trim();
 const backupDirectory = (process.env.BACKUP_DIRECTORY || 'backups').trim();
+const maxLocalBackups = Math.max(1, Number(process.env.MAX_LOCAL_BACKUPS || 10));
 const autoBackupMinutes = Number(process.env.AUTO_BACKUP_INTERVAL_MINUTES || 0);
 const r2AccountId = (process.env.R2_ACCOUNT_ID || '').trim();
 const r2AccessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
@@ -45,15 +55,17 @@ function requireConfig() {
 
 requireConfig();
 
-const dataDirectory = path.join(__dirname, 'data');
+const dataDirectory = path.isAbsolute(configuredDataDirectory)
+  ? configuredDataDirectory
+  : path.join(__dirname, configuredDataDirectory);
 fs.mkdirSync(dataDirectory, { recursive: true });
 const db = new Database(path.join(dataDirectory, 'app.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// Auto-migrate users table if it does not yet include doctor/nurse/patient roles
+// Auto-migrate users table if it exists and does not yet include doctor/nurse/patient roles
 const usersTableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get()?.sql || '';
-if (!usersTableSql.includes('doctor')) {
+if (usersTableSql && !usersTableSql.includes('doctor')) {
   db.pragma('foreign_keys = OFF');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users_new (
@@ -157,10 +169,30 @@ function emailCodeDigest(tokenHash, code) {
   return crypto.createHmac('sha256', sessionSecret).update(`${tokenHash}:${code}`).digest();
 }
 
+function createMailTransporter() {
+  const tlsOptions = smtpIgnoreTls ? { tls: { rejectUnauthorized: false } } : {};
+  if (smtpHost) {
+    return nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: { user: smtpUser, pass: smtpAppPassword },
+      ...tlsOptions,
+    });
+  }
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: smtpUser, pass: smtpAppPassword },
+    ...tlsOptions,
+  });
+}
+
 function verificationRecipient(user) {
   if (!sharedOtpRoles.has(user.role)) return user.username;
   const configuredEmail = (process.env.OTP_SHARED_EMAIL || '').trim();
   if (configuredEmail) return configuredEmail;
+  const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_USERNAME || '').trim();
+  if (validateEmailAddress(bootstrapEmail)) return bootstrapEmail;
   return db.prepare("SELECT username FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get()?.username || user.username;
 }
 
@@ -192,10 +224,7 @@ async function sendEmailCode(user, tokenHash) {
   `).run(emailCodeDigest(tokenHash, code).toString('hex'), now + 5 * 60_000, now, tokenHash);
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: smtpUser, pass: smtpAppPassword },
-    });
+    const transporter = createMailTransporter();
     await transporter.sendMail({
       from: `Secure Login <${smtpUser}>`,
       to: recipient,
@@ -207,7 +236,7 @@ async function sendEmailCode(user, tokenHash) {
   } catch (error) {
     console.error('Failed to send verification email:', error);
     db.prepare('UPDATE sessions SET email_code_hash = NULL, email_code_expires_at = NULL WHERE token_hash = ?').run(tokenHash);
-    throw otpError(503, 'Could not send the email code. Check your Gmail SMTP settings and try again.');
+    throw otpError(503, 'Could not send the email code. Check your SMTP settings and try again.');
   }
 }
 
@@ -263,19 +292,16 @@ function encryptBackup(buffer) {
 
 async function emailDatabaseBackup(target, filename) {
   if (!smtpUser || !smtpAppPassword || !validateEmailAddress(backupEmail)) {
-    throw new Error('Gmail backup is not configured. Check SMTP_USER, SMTP_APP_PASSWORD, and BACKUP_EMAIL in .env.');
+    throw new Error('Email backup is not configured. Check SMTP_USER, SMTP_APP_PASSWORD, and BACKUP_EMAIL in .env.');
   }
 
   const { size } = await fs.promises.stat(target);
   if (size > 18 * 1024 * 1024) {
-    throw new Error('This database is too large to email safely through Gmail (maximum 18 MB). Use Cloudflare R2 for this backup.');
+    throw new Error('This database is too large to email safely (maximum 18 MB). Use Cloudflare R2 for this backup.');
   }
 
   const encryptedBackup = encryptBackup(await fs.promises.readFile(target));
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: smtpUser, pass: smtpAppPassword },
-  });
+  const transporter = createMailTransporter();
   await transporter.sendMail({
     from: `Secure Login Backup <${smtpUser}>`,
     to: backupEmail,
@@ -290,12 +316,15 @@ async function emailDatabaseBackup(target, filename) {
   return backupEmail;
 }
 
-async function pruneLiveBackups(directory) {
-  const liveFiles = (await fs.promises.readdir(directory))
-    .filter((filename) => /^app-backup-live-.*\.db$/.test(filename))
+async function pruneLocalBackups(directory, safeLabel) {
+  const prefix = `app-backup-${safeLabel}-`;
+  const matchingFiles = (await fs.promises.readdir(directory))
+    .filter((filename) => filename.startsWith(prefix) && filename.endsWith('.db'))
     .sort()
     .reverse();
-  await Promise.all(liveFiles.slice(10).map((filename) => fs.promises.unlink(path.join(directory, filename))));
+  await Promise.all(
+    matchingFiles.slice(maxLocalBackups).map((filename) => fs.promises.unlink(path.join(directory, filename)).catch(() => {})),
+  );
 }
 
 async function runDatabaseBackup(label = 'manual', { email = false, cloudStorage = null } = {}) {
@@ -309,7 +338,9 @@ async function runDatabaseBackup(label = 'manual', { email = false, cloudStorage
   const filename = `app-backup-${safeLabel}-${stamp}-${crypto.randomBytes(3).toString('hex')}.db`;
   const target = path.join(resolvedBackupDirectory, filename);
   await db.backup(target);
-  if (safeLabel === 'live') await pruneLiveBackups(resolvedBackupDirectory);
+  if (safeLabel === 'live' || safeLabel === 'auto') {
+    await pruneLocalBackups(resolvedBackupDirectory, safeLabel);
+  }
 
   const result = {
     label: safeLabel,
@@ -361,16 +392,30 @@ function markDatabaseChanged(req) {
   req.databaseChanged = true;
 }
 
+if (trustProxy) {
+  app.set('trust proxy', 1);
+}
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/img', express.static(path.join(__dirname, 'img')));
 
+app.get('/api/health', (_req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true, status: 'healthy', timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ ok: false, status: 'unhealthy' });
+  }
+});
+
 app.use('/api', (req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   const origin = req.get('origin');
-  if (origin && origin !== `${req.protocol}://${req.get('host')}`) {
+  const allowedOrigin = (process.env.ALLOWED_ORIGIN || '').trim();
+  const expectedOrigin = `${req.protocol}://${req.get('host')}`;
+  if (origin && origin !== expectedOrigin && (!allowedOrigin || origin !== allowedOrigin)) {
     return res.status(403).json({ error: 'Request origin was not allowed.' });
   }
   next();
@@ -466,7 +511,7 @@ app.post('/api/login', loginLimiter, async (req, res, next) => {
     const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const role = typeof req.body.role === 'string' ? req.body.role.trim().toLowerCase() : '';
-    if (!['admin', 'nurse', 'doctor', 'patient'].includes(role)) {
+    if (!roles.includes(role)) {
       return res.status(400).json({ error: 'Please select your role before signing in.' });
     }
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND role = ? COLLATE NOCASE').get(username, role);
@@ -549,6 +594,7 @@ app.get('/api/dashboard', requireComplete, (req, res) => {
     const patients = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'patient'").get().count;
     const records = db.prepare('SELECT COUNT(*) AS count FROM medical_records').get().count;
     const vitals = db.prepare('SELECT COUNT(*) AS count FROM vitals').get().count;
+    const requests = db.prepare('SELECT COUNT(*) AS count FROM patient_requests').get().count;
     return res.json({
       title: 'Hospital Administration',
       subtitle: 'System directory & access control',
@@ -558,26 +604,31 @@ app.get('/api/dashboard', requireComplete, (req, res) => {
       patients,
       records,
       vitals,
+      requests,
     });
   }
   if (role === 'doctor') {
     const myRecords = db.prepare('SELECT COUNT(*) AS count FROM medical_records WHERE doctor_id = ?').get(req.auth.id).count;
     const totalPatients = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'patient'").get().count;
+    const patientRequests = db.prepare('SELECT COUNT(*) AS count FROM patient_requests').get().count;
     return res.json({
       title: "Doctor's Station",
       subtitle: 'Clinical consultations, diagnoses & prescriptions',
       myRecords,
       totalPatients,
+      patientRequests,
     });
   }
   if (role === 'nurse') {
     const myVitals = db.prepare('SELECT COUNT(*) AS count FROM vitals WHERE nurse_id = ?').get(req.auth.id).count;
     const totalPatients = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'patient'").get().count;
+    const patientRequests = db.prepare('SELECT COUNT(*) AS count FROM patient_requests').get().count;
     return res.json({
       title: "Nurse's Station",
       subtitle: 'Patient triage, vitals tracking & nursing care',
       myVitals,
       totalPatients,
+      patientRequests,
     });
   }
   if (role === 'patient') {
@@ -604,13 +655,72 @@ app.get('/api/admin/users', requireComplete, allowRoles('admin'), (_req, res) =>
   res.json({ users });
 });
 
-app.post('/api/admin/backup', requireComplete, allowRoles('admin'), async (req, res, next) => {
+app.post('/api/admin/backup', requireComplete, allowRoles('admin'), async (req, res) => {
   try {
     const label = typeof req.body?.label === 'string' && req.body.label.trim() ? req.body.label.trim() : 'manual';
     const result = await runDatabaseBackup(label, { email: true });
     res.json({ ok: true, backup: result });
   } catch (error) {
     res.status(503).json({ error: error.message || 'Database backup failed.' });
+  }
+});
+
+app.post('/api/admin/backup/download', requireComplete, allowRoles('admin'), async (_req, res) => {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `healthcare-backup-${stamp}.db.enc`;
+  const temporaryFile = path.join(os.tmpdir(), `healthcare-backup-${crypto.randomUUID()}.db`);
+  try {
+    await db.backup(temporaryFile);
+    const encryptedBackup = encryptBackup(await fs.promises.readFile(temporaryFile));
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, no-store',
+    });
+    res.send(encryptedBackup);
+  } catch (error) {
+    console.error('Offline backup download failed:', error.message);
+    res.status(503).json({ error: 'Could not create the offline backup.' });
+  } finally {
+    await fs.promises.rm(temporaryFile, { force: true }).catch(() => {});
+  }
+});
+
+app.post('/api/admin/backup/cloud', requireComplete, allowRoles('admin'), async (req, res) => {
+  let client;
+  try {
+    const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint.trim() : '';
+    const bucket = typeof req.body?.bucket === 'string' ? req.body.bucket.trim() : '';
+    const accessKeyId = typeof req.body?.accessKeyId === 'string' ? req.body.accessKeyId.trim() : '';
+    const secretAccessKey = typeof req.body?.secretAccessKey === 'string' ? req.body.secretAccessKey : '';
+    let endpointUrl;
+    try {
+      endpointUrl = new URL(endpoint);
+    } catch {
+      return res.status(400).json({ error: 'Enter the Cloudflare R2 endpoint URL.' });
+    }
+    if (endpointUrl.protocol !== 'https:' || endpointUrl.port || !/^[a-z0-9-]+\.r2\.cloudflarestorage\.com$/i.test(endpointUrl.hostname) || endpointUrl.pathname !== '/') {
+      return res.status(400).json({ error: 'Use your HTTPS Cloudflare R2 endpoint, such as https://<account-id>.r2.cloudflarestorage.com.' });
+    }
+    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) || !accessKeyId || accessKeyId.length > 256 || !secretAccessKey || secretAccessKey.length > 512) {
+      return res.status(400).json({ error: 'Enter a valid bucket name, access key ID, and secret access key.' });
+    }
+
+    client = new S3Client({
+      region: 'auto',
+      endpoint: endpointUrl.origin,
+      forcePathStyle: true,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+    const result = await runDatabaseBackup('cloud', {
+      cloudStorage: { client, bucket, prefix: r2BackupPrefix },
+    });
+    res.json({ ok: true, backup: result });
+  } catch (error) {
+    console.error('Cloudflare backup failed:', error.message);
+    res.status(503).json({ error: 'Cloudflare upload failed. Verify the endpoint, bucket, and R2 token permissions.' });
+  } finally {
+    client?.destroy();
   }
 });
 
@@ -662,6 +772,17 @@ app.delete('/api/admin/users/:id', requireComplete, allowRoles('admin'), (req, r
   deleteAccount();
   markDatabaseChanged(req);
   res.json({ ok: true });
+});
+
+// Staff Patient Requests Endpoint
+app.get('/api/staff/patient-requests', requireComplete, allowRoles('admin', 'doctor', 'nurse'), (_req, res) => {
+  const requests = db.prepare(`
+    SELECT r.id, r.subject, r.message, r.created_at, p.username AS patient_email
+    FROM patient_requests r
+    JOIN users p ON p.id = r.patient_id
+    ORDER BY r.id DESC LIMIT 100
+  `).all();
+  res.json({ requests });
 });
 
 // Doctor Endpoints
@@ -794,9 +915,17 @@ app.post('/api/imputor/entries', requireComplete, allowRoles('admin', 'imputor')
   res.status(201).json({ ok: true });
 });
 
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API endpoint not found.' });
+});
+
 app.use('/api', (error, _req, res, _next) => {
   console.error(error);
   res.status(500).json({ error: 'Something went wrong. Check the server log for details.' });
+});
+
+app.get('/{*splat}', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 async function start() {
@@ -812,68 +941,34 @@ async function start() {
     console.log(`Created bootstrap admin account: ${username}`);
   }
 
+  let backupTimer = null;
   if (autoBackupMinutes > 0) {
-    setInterval(() => {
+    backupTimer = setInterval(() => {
       runDatabaseBackup('auto').catch((error) => console.error('Automatic backup failed:', error));
     }, autoBackupMinutes * 60 * 1000);
-    console.log(`Automatic backups enabled every ${autoBackupMinutes} minutes to Cloudflare R2${r2Configured ? ` bucket ${r2BucketName}` : ' (R2 credentials are not configured)'}`);
+    backupTimer.unref?.();
+    console.log(`Automatic backups enabled every ${autoBackupMinutes} minutes${r2Configured ? ` to Cloudflare R2 bucket ${r2BucketName}` : ' (local snapshots; R2 not configured)'}`);
   }
 
-  app.listen(port, () => console.log(`Login app running at http://localhost:${port}`));
+  const server = app.listen(port, () => console.log(`Login app running at http://localhost:${port}`));
+
+  const shutdown = async (signal) => {
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    if (backupTimer) clearInterval(backupTimer);
+    server.close(async () => {
+      await liveBackupQueue.catch(() => {});
+      try {
+        db.close();
+      } catch {}
+      process.exit(0);
+    });
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 start().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;
-});
-
-app.post('/api/admin/backup/cloud', requireComplete, allowRoles('admin'), async (req, res) => {
-  let client;
-  try {
-    const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint.trim() : '';
-    const bucket = typeof req.body?.bucket === 'string' ? req.body.bucket.trim() : '';
-    const accessKeyId = typeof req.body?.accessKeyId === 'string' ? req.body.accessKeyId.trim() : '';
-    const secretAccessKey = typeof req.body?.secretAccessKey === 'string' ? req.body.secretAccessKey : '';
-    let endpointUrl;
-    try {
-      endpointUrl = new URL(endpoint);
-    } catch {
-      return res.status(400).json({ error: 'Enter the Cloudflare R2 endpoint URL.' });
-    }
-    if (endpointUrl.protocol !== 'https:' || endpointUrl.port || !/^[a-z0-9-]+\.r2\.cloudflarestorage\.com$/i.test(endpointUrl.hostname) || endpointUrl.pathname !== '/') {
-      return res.status(400).json({ error: 'Use your HTTPS Cloudflare R2 endpoint, such as https://<account-id>.r2.cloudflarestorage.com.' });
-    }
-    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) || !accessKeyId || accessKeyId.length > 256 || !secretAccessKey || secretAccessKey.length > 512) {
-      return res.status(400).json({ error: 'Enter a valid bucket name, access key ID, and secret access key.' });
-    }
-
-    client = new S3Client({
-      region: 'auto',
-      endpoint: endpointUrl.origin,
-      forcePathStyle: true,
-      credentials: { accessKeyId, secretAccessKey },
-    });
-    const result = await runDatabaseBackup('cloud', {
-      cloudStorage: { client, bucket, prefix: r2BackupPrefix },
-    });
-    res.json({ ok: true, backup: result });
-  } catch (error) {
-    console.error('Cloudflare backup failed:', error.message);
-    res.status(503).json({ error: 'Cloudflare upload failed. Verify the endpoint, bucket, and R2 token permissions.' });
-  } finally {
-    client?.destroy();
-  }
-});
-
-
-
-const path = require('path');
-
-// Serve frontend
-app.use(express.static(path.join(__dirname, '../client/build'))); // if your frontend is in /client
-// or
-// app.use(express.static(path.join(__dirname, './dist'))); // if it's Vite
-
-app.get('*', (req,res) => {
- res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
 });

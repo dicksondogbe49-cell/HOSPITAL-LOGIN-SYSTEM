@@ -1,0 +1,14 @@
+node_modules
+.git
+.gitignore
+.vscode
+.env
+.env.*
+!.env.example
+data
+backups
+*.db
+*.db-shm
+*.db-wal
+*.db.enc
+npm-debug.log*

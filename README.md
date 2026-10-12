@@ -1,28 +1,82 @@
-# Secure Login
+# Secure Login & Hospital Workflow Portal
 
-A small example app with email/password sign-in, Gmail-delivered verification codes, role-based access, and a separate plain HTML/CSS/JavaScript frontend.
+A full-stack healthcare role-based access control (RBAC) web application with email/password sign-in, two-factor email verification codes (2FA OTP), clinical workflows, and automated encrypted database backups.
 
-## Run it
+## Features
 
-1. Install Node.js 22.15 or newer.
-2. In this folder, run `npm install`.
-3. Copy `.env.example` to `.env`.
-4. Set unique values for `PASSWORD_PEPPER` and `SESSION_SECRET` (each at least 32 characters), and set a strong `BOOTSTRAP_ADMIN_PASSWORD` of at least 12 characters.
-5. For Gmail delivery, enable 2-Step Verification on the sending Google account and create a Google App Password. Set `SMTP_APP_PASSWORD` to that app password, not your normal Google password. `SMTP_USER` is the sender address; it defaults to `BOOTSTRAP_ADMIN_USERNAME` when omitted.
-6. Set `BACKUP_EMAIL` to the inbox that should receive backups; it defaults to the bootstrap admin email. The existing Gmail SMTP settings are used to send backups.
-7. Cloudflare R2 is optional. Create an R2 bucket and an R2 API token with Object Read & Write permission scoped to that bucket. For a one-time upload, an admin can enter the R2 HTTPS endpoint, bucket, access key ID, and secret access key in the **Backup to Cloudflare** form; these credentials are used for that request only and are not saved. For scheduled R2 uploads, set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in `.env`; `R2_BACKUP_PREFIX` defaults to `database-backups`. Keep access keys secret and do not commit `.env`.
-8. Press `F5` in VS Code and choose **Login app in Edge** to start the server and open Microsoft Edge. In PowerShell, you can also run `npm.cmd start` and open `http://localhost:3000` yourself.
+- **Two-Step Authentication**: Salted and peppered `scrypt` password hashing (`N=32768`) paired with single-use 6-digit email verification codes (`HMAC-SHA256`, 5-minute expiry, 5-attempt limit, 60-second resend cooldown).
+- **Six Role-Based Workspaces**:
+  - **Administrator (`admin`)**: Hospital metrics snapshot, account creation/deletion across all roles, system backup controls (offline encrypted download, instant email backup, one-time or scheduled Cloudflare R2 upload), and patient request monitoring.
+  - **Doctor (`doctor`)**: Clinical consultation logging (diagnosis, prescription, clinical notes), consultation history, and patient consultation/support request review.
+  - **Nurse (`nurse`)**: Patient triage and vitals logging (blood pressure, heart rate, temperature, nursing notes), vitals history, and patient request review.
+  - **Patient (`patient`)**: Personal care portal displaying medical records, recorded vitals history, and a form to submit consultation or support requests to the care team.
+  - **Manager (`manager`) & Imputor (`imputor`)**: General operational entry submission (`imputor`) and team review (`manager`).
+- **Automated & Encrypted Backups**:
+  - **Live Snapshots & Encrypted Email**: Queues a consistent SQLite online backup (`db.backup()`) and emails an `AES-256-GCM` encrypted `.db.enc` attachment after every data modification.
+  - **Scheduled Backups**: Runs every `AUTO_BACKUP_INTERVAL_MINUTES`, prunes local snapshots (`live` and `auto`) to `MAX_LOCAL_BACKUPS` (default `10`), and uploads to Cloudflare R2 when configured.
+  - **Offline Encrypted Download**: Downloads an `AES-256-GCM` encrypted `.db.enc` snapshot directly to the administrator's device.
 
-After each successful application data change, the app queues a local SQLite snapshot and emails an AES-256-GCM encrypted attachment to `BACKUP_EMAIL`. Login and verification activity do not trigger backups. The admin **Backup now** button sends one immediately. The ten most recent live snapshots are kept locally. The encryption key is derived from `SESSION_SECRET`; keep that secret securely backed up because it is required to decrypt the attachment. Gmail attachments are limited to database files of 18 MB or smaller, and Gmail sending quotas may limit how many changes can be backed up in a day. Scheduled backups also run at `AUTO_BACKUP_INTERVAL_MINUTES`, keep a local copy, and upload to R2 when configured; scheduled backups do not email repeatedly. Set the interval to `0` to disable scheduled backups.
+## Local Setup
 
-To decrypt an emailed backup, save the `.enc` attachment and run `node decrypt_backup.js <encrypted-file> <output.db>` from the project folder with the original `.env` available. Keep `.env` and the decrypted database private.
+1. Install **Node.js 22.15** or newer.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+4. Configure `.env`:
+   - Set unique values for `PASSWORD_PEPPER` and `SESSION_SECRET` (each at least 32 characters).
+   - Set `BOOTSTRAP_ADMIN_USERNAME` (a valid email address) and `BOOTSTRAP_ADMIN_PASSWORD` (at least 12 characters). The bootstrap administrator account is provisioned automatically on first startup.
+   - For **Gmail SMTP**, enable 2-Step Verification on your Google account, generate a Google App Password, and set `SMTP_USER` and `SMTP_APP_PASSWORD`. For **any other SMTP provider** (Outlook, Resend, Brevo, SendGrid, Mailgun, Zoho), also set `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE`.
+   - Set `BACKUP_EMAIL` to the inbox that should receive encrypted backups (defaults to `BOOTSTRAP_ADMIN_USERNAME`).
+   - Set `OTP_SHARED_EMAIL` to the inbox that should receive verification codes for `doctor`, `nurse`, and `patient` accounts (defaults to `BOOTSTRAP_ADMIN_USERNAME` when empty). `admin`, `manager`, and `imputor` accounts receive codes at their own account email address.
+5. Start the server:
+   ```bash
+   npm start
+   ```
+   Open `http://localhost:3000`. Health status is available at `GET /api/health`.
 
-The bootstrap admin is created on the first run. Account identifiers must be email addresses. Doctor, Nurse, and Patient sign-in codes go to `OTP_SHARED_EMAIL`; when it is empty, they go to the bootstrap admin email. Set it only to a mailbox you control, since access to that inbox can complete sign-in for all three roles. Other roles receive codes at their own account email. Each successful password sign-in sends a six-digit email code that expires after five minutes; the code is single-use and limited to five attempts. The Patient role is sign-in-only and has no patient portal features. The app uses scrypt with an individual random salt and a server-side pepper, HMAC-protected email codes, HttpOnly/SameSite session cookies, rate-limited sign-in, and server-side role checks.
+## Decrypting a Backup
 
-## Frontend and backend files
+Keep your original `SESSION_SECRET` backed up securely; it is required to decrypt `.db.enc` files downloaded from the dashboard or received by email:
 
-- `public/index.html`, `public/styles.css`, `public/app.js`: browser interface.
-- `server.js`: API, SQLite storage, authentication, 2FA, and authorization.
-- `.env.example`: required local configuration template.
+```bash
+node decrypt_backup.js <encrypted-file.db.enc> <restored.db>
+```
 
-This is a learning/demo starter, not a complete production identity platform. Deploy only behind HTTPS, keep the environment secrets out of source control, back them up securely, and add operational controls such as recovery codes, audit logging, and distributed rate limiting across app instances before production use. Email verification depends on the security of the mailbox and is generally weaker than an authenticator app.
+## Deploying to Your Own GitHub & Hosting Platform
+
+This repository is pre-configured for deployment under any GitHub account and hosting provider:
+
+### 1. Push to a New GitHub Repository
+```bash
+git remote remove origin 2>/dev/null || true
+git remote add origin https://github.com/<your-github-username>/<your-repo-name>.git
+git branch -M main
+git push -u origin main
+```
+
+### 2. Hosting Options
+- **Render (`render.yaml` included)**:
+  1. In Render, click **New + → Blueprint** and connect your GitHub repository.
+  2. Render will automatically provision the web service, a persistent disk mounted at `/var/data` (`DATA_DIRECTORY=/var/data/db`, `BACKUP_DIRECTORY=/var/data/backups`), and generate `PASSWORD_PEPPER` and `SESSION_SECRET`.
+  3. Fill in `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`, `SMTP_USER`, and `SMTP_APP_PASSWORD` when prompted.
+- **Railway (`railway.json` included)**:
+  1. Create a new project from your GitHub repo in Railway.
+  2. Attach a **Volume** mounted at `/app/data`, set `DATA_DIRECTORY=/app/data/db` and `BACKUP_DIRECTORY=/app/data/backups`, and add the variables from `.env.example`.
+- **Docker / Fly.io / Koyeb / VPS (`Dockerfile` included)**:
+  ```bash
+  docker build -t secure-hospital-portal .
+  docker run -d -p 3000:3000 --env-file .env -v hospital_data:/app/data -v hospital_backups:/app/backups secure-hospital-portal
+  ```
+
+## Project Files
+
+- `server.js`: Express 5 API, SQLite WAL storage, authentication, 2FA OTP, role authorization, and backup engine.
+- `public/index.html`, `public/styles.css`, `public/app.js`: Single-page browser interface.
+- `decrypt_backup.js`: Offline backup decryption CLI utility (`HKDF-SHA256` + `AES-256-GCM`).
+- `hash_password.js`: CLI utility (`node hash_password.js <password>`) to generate `scrypt` password hashes.
+- `Dockerfile`, `render.yaml`, `railway.json`, `.env.example`: Deployment configurations.
