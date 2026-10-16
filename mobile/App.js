@@ -24,8 +24,10 @@ const ROLES = ['admin', 'doctor', 'nurse', 'patient', 'manager', 'imputor'];
 const LABELS = { admin: 'Administrator', doctor: 'Doctor', nurse: 'Nurse', patient: 'Patient', manager: 'Manager', imputor: 'Imputor' };
 const COLORS = { navy: '#12324a', blue: '#0879ad', pale: '#eff6f9', ink: '#172b3a', muted: '#657b8a', line: '#dbe5eb', green: '#16834b', red: '#c52d36', white: '#ffffff' };
 
+const LIVE_PRODUCTION_URL = 'https://user-login-form-1.onrender.com';
+
 function localDefaultUrl() {
-  return Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  return LIVE_PRODUCTION_URL;
 }
 
 function b64(bytes) {

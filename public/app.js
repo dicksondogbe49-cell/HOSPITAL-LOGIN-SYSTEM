@@ -209,7 +209,7 @@ function showTwoFactorVerify() {
       <p class="panel-lede">A six-digit code was sent to <strong>${verificationEmail}</strong>. It expires in five minutes.</p>
       <form id="totp-form">
         <div class="error-message hidden" data-error role="alert"></div>
-        <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" value="${currentUser?.fallbackCode ? escapeHtml(currentUser.fallbackCode) : ''}" required autofocus></div>
+        <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autofocus></div>
         <button class="primary-button" type="submit"><span>${isRegistration ? 'Verify email &amp; complete registration' : 'Verify and continue'}</span><span class="button-arrow" aria-hidden="true">→</span></button>
       </form>
       <button class="text-button resend-button" id="resend-code" type="button">Resend code to ${verificationEmail}</button>
@@ -231,9 +231,7 @@ async function resendEmailCode(event) {
   try {
     const result = await api('/api/2fa/resend', { method: 'POST' });
     if (result.fallbackCode) {
-      const codeInput = document.querySelector('#code');
-      if (codeInput) codeInput.value = result.fallbackCode;
-      status.textContent = `Fallback verification code: ${result.fallbackCode}`;
+      status.textContent = `Verification notice: check your inbox for the code.`;
     } else {
       status.textContent = `A new code was sent to ${result.verificationEmail || currentUser?.username || 'your email inbox'}.`;
     }
@@ -299,7 +297,7 @@ function showForgotPasswordVerify(email, fallbackCode) {
         <div class="error-message hidden" data-error role="alert"></div>
         <div class="field">
           <label for="reset-code">6-digit reset code</label>
-          <input class="code-input" id="reset-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" value="${fallbackCode ? escapeHtml(fallbackCode) : ''}" required autofocus>
+          <input class="code-input" id="reset-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autofocus>
         </div>
         <button class="primary-button" type="submit" style="background:linear-gradient(110deg,#0b3562,#11689a 62%,#0c527b)"><span>Verify code</span><span class="button-arrow" aria-hidden="true">→</span></button>
       </form>
@@ -386,9 +384,7 @@ async function resendResetCode(event) {
     status.className = 'security-note';
     status.setAttribute('role', 'status');
     if (result.fallbackCode) {
-      status.textContent = `Fallback code (dev mode): ${result.fallbackCode}`;
-      const codeInput = document.querySelector('#reset-code');
-      if (codeInput) codeInput.value = result.fallbackCode;
+      status.textContent = `A new reset code has been sent. Check your email.`;
     } else {
       status.textContent = `A new code has been sent to ${escapeHtml(window._resetEmail || 'your email')}.`;
     }

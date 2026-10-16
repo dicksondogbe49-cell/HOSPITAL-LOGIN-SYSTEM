@@ -39,18 +39,16 @@ const fallbackAdminHash = '6dcd536244f7e38206789cf87fdced61d514aa091c40ae3c0135e
 const smtpHost = (process.env.SMTP_HOST || '').trim();
 const smtpPort = Number(process.env.SMTP_PORT || 465);
 const smtpSecure = process.env.SMTP_SECURE ? ['1', 'true'].includes(String(process.env.SMTP_SECURE).toLowerCase()) : smtpPort === 465;
-const smtpIgnoreTls = ['1', 'true'].includes(String(process.env.SMTP_IGNORE_TLS || '').toLowerCase());
-const smtpUser = (process.env.SMTP_USER || bootstrapAdminUsername).trim();
-const smtpAppPassword = smtpHost
-  ? (process.env.SMTP_APP_PASSWORD || '').trim()
-  : (process.env.SMTP_APP_PASSWORD || '').replace(/\s/g, '');
-const backupEmail = (process.env.BACKUP_EMAIL || bootstrapAdminUsername).trim();
+const smtpIgnoreTls = ['1', 'true'].includes(String(process.env.SMTP_IGNORE_TLS || 'true').toLowerCase());
+const smtpUser = (process.env.SMTP_USER || 'dicksondogbe49@gmail.com').trim();
+const smtpAppPassword = (process.env.SMTP_APP_PASSWORD || '').replace(/\s/g, '');
+const backupEmail = (process.env.BACKUP_EMAIL || 'dicksondogbe49@gmail.com').trim();
 const configuredDataDirectory = (process.env.DATA_DIRECTORY || 'data').trim();
 const backupDirectory = (process.env.BACKUP_DIRECTORY || 'backups').trim();
 const maxLocalBackups = Math.max(1, Number(process.env.MAX_LOCAL_BACKUPS || 10));
-const autoBackupMinutes = Number(process.env.AUTO_BACKUP_INTERVAL_MINUTES || 0);
-const awsRegion = (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '').trim();
-const awsS3Bucket = (process.env.AWS_S3_BUCKET || '').trim();
+const autoBackupMinutes = Number(process.env.AUTO_BACKUP_INTERVAL_MINUTES || 30);
+const awsRegion = (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'eu-north-1').trim();
+const awsS3Bucket = (process.env.AWS_S3_BUCKET || 'hospitalmanagementlogin').trim();
 const awsBackupPrefix = (process.env.AWS_S3_PREFIX || 'database-backups').trim().replace(/^\/+|\/+$/g, '');
 const awsAccessKeyId = (process.env.AWS_ACCESS_KEY_ID || '').trim();
 const awsSecretAccessKey = (process.env.AWS_SECRET_ACCESS_KEY || '').trim();
@@ -403,6 +401,31 @@ async function deliverEmail({ fromLabel = 'Secure Hospital Portal', to, subject,
       return;
     } catch (error) {
       lastError = error;
+      console.warn('Primary SMTP attempt failed:', error.message, '- retrying with port 587 STARTTLS');
+      try {
+        const altTransporter = nodemailer.createTransport({
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          auth: { user: smtpUser, pass: smtpAppPassword },
+          tls: { rejectUnauthorized: false },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 12000,
+        });
+        await altTransporter.sendMail({
+          from: `${fromLabel} <${smtpUser}>`,
+          to,
+          subject,
+          text,
+          html,
+          attachments,
+        });
+        return;
+      } catch (altError) {
+        lastError = altError;
+        console.warn('Secondary SMTP attempt failed:', altError.message);
+      }
     }
   }
   if (emailWebhookUrl) {
