@@ -119,26 +119,39 @@ function generateAdminReportPdf({ users }) {
 
   // Keep this document limited to the account credential audit.
   drawHeader(true);
-  const accountHeaders = ['Account / Email', 'Role', 'Password', 'KDF', 'Salt (Hex)', 'Hash (scrypt)'];
-  const accountWidths = [120, 65, 80, 50, 75, 105];
+  drawMetricsGrid([
+    { label: 'AUTHENTICATED ACCOUNTS', value: String((users || []).length) },
+    { label: 'KDF ALGORITHM (RFC 7914)', value: 'scrypt N=32768' },
+    { label: 'PLAINTEXT PASSWORDS', value: 'Zero-Knowledge' },
+  ]);
+
+  drawSectionTitle('Accounts & Credential Security Directory');
+
+  const accountHeaders = ['Username', 'Email', 'Password', 'Password Hash (scrypt)', 'Role'];
+  const accountWidths = [110, 110, 75, 145, 55];
   const accountRows = (users || []).map((user) => [
     user.username,
-    user.role,
+    user.email || user.username || 'N/A',
     'Never Stored',
-    'scrypt',
-    user.password_salt ? user.password_salt.slice(0, 10) + '...' : 'N/A',
-    user.password_hash ? user.password_hash.slice(0, 14) + '...' : 'N/A',
+    user.password_hash ? user.password_hash.slice(0, 16) + '...' + user.password_hash.slice(-8) : 'N/A',
+    user.role,
   ]);
-  drawTable(accountHeaders, accountRows.length ? accountRows : [['(No accounts)', '-', '-', '-', '-', '-']], accountWidths);
-  checkPageSpace(58);
+  drawTable(accountHeaders, accountRows.length ? accountRows : [['(No accounts)', '-', '-', '-', '-']], accountWidths);
+
+  checkPageSpace(85);
   pageCommands.push(`0.94 0.96 0.98 rg`);
-  pageCommands.push(`${margin} ${currentY - 45} ${contentWidth} 45 re f`);
-  pageCommands.push(`0.30 0.55 0.75 RG 0.8 w ${margin} ${currentY - 45} ${contentWidth} 45 re S`);
+  pageCommands.push(`${margin} ${currentY - 72} ${contentWidth} 72 re f`);
+  pageCommands.push(`0.30 0.55 0.75 RG 0.8 w ${margin} ${currentY - 72} ${contentWidth} 72 re S`);
   pageCommands.push(`0.08 0.28 0.45 rg`);
-  pageCommands.push(`BT /F2 8 Tf ${margin + 8} ${currentY - 13} Td (INFORMATION SECURITY PRINCIPLE: ZERO-KNOWLEDGE CREDENTIAL STORAGE) Tj ET`);
-  pageCommands.push(`BT /F1 7 Tf ${margin + 8} ${currentY - 25} Td (Plaintext passwords are NEVER stored in database, memory, or backups (NIST SP 800-63B / OWASP).) Tj ET`);
-  pageCommands.push(`BT /F1 7 Tf ${margin + 8} ${currentY - 36} Td (All accounts use memory-hard scrypt (N=32768, r=8, p=1, 64-byte key) with unique 16-byte random salts + pepper.) Tj ET`);
-  currentY -= 55;
+  pageCommands.push(`BT /F2 9 Tf ${margin + 10} ${currentY - 14} Td (INFORMATION SECURITY PRINCIPLES & CREDENTIAL SPECIFICATIONS) Tj ET`);
+  pageCommands.push(`0.2 0.25 0.3 rg`);
+  pageCommands.push(`BT /F2 7.5 Tf ${margin + 10} ${currentY - 28} Td (1. Confidentiality (Zero-Knowledge):) Tj ET`);
+  pageCommands.push(`BT /F1 7.5 Tf ${margin + 175} ${currentY - 28} Td (Plaintext passwords are NEVER stored in DB, memory, or logs (NIST SP 800-63B).) Tj ET`);
+  pageCommands.push(`BT /F2 7.5 Tf ${margin + 10} ${currentY - 42} Td (2. Integrity (Cryptographic KDF & Salt):) Tj ET`);
+  pageCommands.push(`BT /F1 7.5 Tf ${margin + 175} ${currentY - 42} Td (scrypt N=32768, r=8, p=1, 64-byte key with CSPRNG 128-bit isolated salt + pepper.) Tj ET`);
+  pageCommands.push(`BT /F2 7.5 Tf ${margin + 10} ${currentY - 56} Td (3. Availability & Offsite Resilience:) Tj ET`);
+  pageCommands.push(`BT /F1 7.5 Tf ${margin + 175} ${currentY - 56} Td (Continuous AES-256-GCM snapshots, email backup delivery & AWS S3 replication.) Tj ET`);
+  currentY -= 82;
   checkPageSpace(20);
   pageCommands.push(`0.25 0.3 0.35 rg`);
   pageCommands.push(`BT /F1 8 Tf ${margin} ${currentY - 10} Td (Cryptographic hashes & salts above are authenticated verification digests.) Tj ET`);

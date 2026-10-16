@@ -1384,38 +1384,41 @@ async function loadUsers() {
     const { users } = await api('/api/admin/users');
     cachedAdminUsers = users || [];
     container.innerHTML = `
-      <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <h2>Accounts &amp; Credential Security Directory</h2>
           <span class="section-count">${users.length} total accounts</span>
         </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a href="/api/admin/report/pdf" target="_blank" rel="noopener noreferrer" class="btn-pdf-view" id="admin-users-pdf-btn" title="View and download complete credential audit PDF report">
+            <span class="btn-pdf-icon" aria-hidden="true">📄</span>
+            <span>View PDF Audit Report</span>
+          </a>
+        </div>
       </div>
       <p class="field-hint" style="margin:2px 0 12px 0; color:#475569;">
-        Displaying authenticated usernames, emails, cryptographic scrypt password hashes, and salts. Plaintext passwords are not stored under Information Security Zero-Knowledge standards.
+        Displaying authenticated emails, usernames, password protection status, and cryptographic scrypt password hashes. Plaintext passwords are never stored under Information Security Zero-Knowledge standards.
       </p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Account &amp; Email</th>
-              <th>Role</th>
-              <th>Password Status</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Password (Plaintext)</th>
               <th>Password Hash (scrypt)</th>
               <th>Cryptographic Salt</th>
-              <th>KDF Spec</th>
+              <th>Role</th>
               <th>Registered</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             ${users.map((u) => `<tr>
+              <td><strong>${escapeHtml(u.username)}</strong></td>
+              <td><span>${escapeHtml(u.email || u.username)}</span></td>
               <td>
-                <strong>${escapeHtml(u.username)}</strong>
-                <span class="meta-sub">${escapeHtml(u.email || u.username)}</span>
-              </td>
-              <td><span class="role-tag role-${escapeHtml(u.role)}">${escapeHtml(roleLabels[u.role] || u.role)}</span></td>
-              <td>
-                <span class="pwd-status-pill" title="Information Security Principle: Plaintext passwords are never stored (Zero-Knowledge Architecture)">🛡️ Never Stored</span>
+                <span class="pwd-status-pill" title="Information Security Principle: Plaintext passwords are never stored (Zero-Knowledge Architecture / NIST SP 800-63B)">🛡️ Never Stored</span>
                 <span class="meta-sub" style="font-size:10px; color:#64748b;">Zero-Knowledge scrypt</span>
               </td>
               <td>
@@ -1430,7 +1433,7 @@ async function loadUsers() {
                   <button type="button" class="btn-copy-tiny" data-copy-salt="${escapeHtml(u.password_salt || '')}" title="Copy full 32-char salt">Copy</button>
                 </div>
               </td>
-              <td><span style="font-family:var(--mono); font-size:10.5px; color:#475569;">scrypt N=32768</span></td>
+              <td><span class="role-tag role-${escapeHtml(u.role)}">${escapeHtml(roleLabels[u.role] || u.role)}</span></td>
               <td><span style="font-size:11px;">${escapeHtml(u.created_at)}</span></td>
               <td>
                 <div class="table-action-cell">
