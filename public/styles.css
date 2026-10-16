@@ -404,3 +404,813 @@ body.patient-theme .patient-overview-card { background: rgba(5, 30, 51, .94); co
   .patient-metric-grid { grid-template-columns: 1fr; }
 }
 
+/* ==========================================================
+   ROLE MANAGEMENT & CRUD BUTTONS (COLOR CODING & TYPOGRAPHY)
+   ========================================================== */
+.btn-crud-add,
+button.btn-crud-add,
+.role-btn-add {
+  background-color: #16a34a !important; /* Green box */
+  color: #ffffff !important;           /* White font color */
+  border: 1px solid #15803d !important;
+  padding: 8px 16px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  box-shadow: 0 2px 4px rgba(22, 163, 74, 0.25);
+  font-family: var(--display), var(--sans);
+}
+.btn-crud-add:hover,
+button.btn-crud-add:hover,
+.role-btn-add:hover {
+  background-color: #15803d !important;
+  color: #ffffff !important;
+}
+
+.btn-crud-modify,
+button.btn-crud-modify,
+.role-btn-modify {
+  background-color: #2563eb !important; /* Blue box */
+  color: #ffffff !important;           /* White font color */
+  border: 1px solid #1d4ed8 !important;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+  font-family: var(--display), var(--sans);
+}
+.btn-crud-modify:hover,
+button.btn-crud-modify:hover,
+.role-btn-modify:hover {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.btn-crud-delete,
+button.btn-crud-delete,
+.role-btn-delete {
+  background-color: #dc2626 !important; /* Red box */
+  color: #ffffff !important;           /* White font color */
+  border: 1px solid #b91c1c !important;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.25);
+  font-family: var(--display), var(--sans);
+}
+.btn-crud-delete:hover,
+button.btn-crud-delete:hover,
+.role-btn-delete:hover {
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+/* ==========================================================
+   SAFE DELETE CONFIRMATION MODAL & ACTION DIALOGS
+   ========================================================== */
+.safe-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(5, 23, 44, 0.82);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modal-fade-in 0.2s ease-out;
+}
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.safe-modal-dialog {
+  background: #ffffff;
+  color: #0f172a;
+  width: 100%;
+  max-width: 460px;
+  border-radius: 8px;
+  padding: 28px 24px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
+  border-top: 4px solid #dc2626;
+  text-align: center;
+  animation: modal-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-slide-up {
+  from { transform: translateY(18px) scale(0.97); }
+  to { transform: translateY(0) scale(1); }
+}
+
+.safe-modal-dialog.form-dialog {
+  border-top: 4px solid #2563eb;
+  text-align: left;
+  max-width: 520px;
+}
+
+.safe-modal-icon {
+  font-size: 38px;
+  margin-bottom: 12px;
+}
+.safe-modal-title {
+  font: 700 20px/1.2 var(--display);
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+.safe-modal-desc {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+.safe-modal-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.btn-modal-yes {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+  border: 1px solid #b91c1c !important;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: 800;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: background-color 0.15s ease;
+  font-family: var(--display), var(--sans);
+}
+.btn-modal-yes:hover {
+  background-color: #b91c1c !important;
+}
+.btn-modal-no {
+  background-color: #475569 !important;
+  color: #ffffff !important;
+  border: 1px solid #334155 !important;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: 800;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: background-color 0.15s ease;
+  font-family: var(--display), var(--sans);
+}
+.btn-modal-no:hover {
+  background-color: #334155 !important;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.modal-head h3 {
+  margin: 0;
+  font: 700 18px var(--display);
+  color: #0f172a;
+}
+.btn-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.btn-modal-close:hover {
+  color: #0f172a;
+}
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+.disabled-input {
+  background-color: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+/* ==========================================================
+   PDF DOCUMENT VIEWER INTEGRATION
+   ========================================================== */
+.btn-pdf-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0e7490 0%, #0369a1 100%);
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  padding: 9px 18px;
+  border-radius: 6px;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(14, 116, 144, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  font-family: var(--display), var(--sans);
+}
+.btn-pdf-view:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #0284c7 100%);
+  box-shadow: 0 6px 18px rgba(14, 116, 144, 0.45);
+  transform: translateY(-1px);
+}
+.btn-pdf-icon {
+  font-size: 15px;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.admin-toolbar-title {
+  font: 700 15px var(--display);
+  color: #0f172a;
+}
+
+/* ==========================================================
+   BACKUP & RESTORE MANAGEMENT
+   ========================================================== */
+.backup-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.backup-action-bar .btn-backup {
+  min-height: 42px;
+  white-space: normal;
+  text-align: center;
+}
+.archived-roles-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.archived-roles-heading h4 {
+  margin: 0;
+}
+.btn-export-archive {
+  background: #475569;
+  color: #fff;
+  border: 1px solid #334155;
+  border-radius: 5px;
+  padding: 8px 12px;
+  font: 700 12px var(--display), var(--sans);
+  cursor: pointer;
+}
+.btn-export-archive:hover {
+  background: #334155;
+}
+.admin-bottom-actions-section .section-heading {
+  margin-bottom: 8px;
+}
+.admin-bottom-actions-section {
+  background: #fff;
+  color: var(--ink);
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, .08);
+}
+.admin-bottom-actions-section .section-heading h2 {
+  color: #000;
+}
+.admin-bottom-actions-section .admin-action-kicker {
+  color: #64748b;
+}
+.admin-bottom-actions-lede {
+  margin: 0 0 18px;
+  color: #000;
+  font-size: 13px;
+}
+.admin-bottom-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.admin-bottom-action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 235px;
+  padding: 18px;
+  background: #f8fafc;
+  border: 1px solid #dbe3ec;
+  border-top: 4px solid #0284c7;
+  border-radius: 8px;
+}
+.admin-bottom-action-card h3 {
+  margin: 8px 0 6px;
+  color: #0f172a;
+  font: 700 16px var(--display), var(--sans);
+}
+.admin-bottom-action-card p {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.admin-bottom-action-card label {
+  width: 100%;
+  margin-bottom: 6px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.admin-action-kicker {
+  color: #64748b;
+  font: 700 10px var(--mono), monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.admin-bottom-action-card .restore-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+.admin-bottom-action-card > button {
+  margin-top: auto;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
+  padding: 11px 14px;
+  border-radius: 6px;
+  font: 700 12px/1.35 var(--display), var(--sans);
+  letter-spacing: .025em;
+  text-align: center;
+  white-space: normal;
+}
+.admin-bottom-action-card .btn-restore {
+  background-color: #dc2626 !important;
+  border-color: #b91c1c !important;
+  color: #fff !important;
+}
+.admin-bottom-action-card .btn-restore:hover {
+  background-color: #b91c1c !important;
+}
+.admin-bottom-action-card .btn-export-archive {
+  background: #15803d;
+  border-color: #166534;
+  color: #fff;
+}
+.admin-bottom-action-card .btn-export-archive:hover {
+  background: #166534;
+}
+.admin-bottom-action-card .security-note {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+.archive-action-card {
+  border-top-color: #15803d;
+}
+.current-backup-action-card {
+  border-top-color: #0284c7;
+}
+@media (max-width: 950px) {
+  .admin-bottom-action-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-bottom-action-card {
+    min-height: 0;
+  }
+  .admin-bottom-action-card > button {
+    margin-top: 0;
+  }
+}
+.btn-backup {
+  background-color: #0284c7 !important; /* Prominent Blue Backup */
+  color: #ffffff !important;
+  border: 1px solid #0369a1 !important;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 9px 20px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--display), var(--sans);
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
+.btn-backup:hover {
+  background-color: #0369a1 !important;
+}
+
+.active-backup-viewer {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #0284c7;
+  border-radius: 6px;
+  padding: 18px;
+  margin: 16px 0;
+}
+.backup-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.backup-viewer-header h3 {
+  margin: 0;
+  font: 700 15px var(--display);
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.backup-status-tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.backup-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.backup-meta-item {
+  background: #ffffff;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.backup-meta-item .meta-label {
+  display: block;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.backup-meta-item .meta-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  word-break: break-all;
+}
+
+.restore-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.restore-box h4 {
+  margin: 0 0 6px;
+  font: 700 14px var(--display);
+  color: #0f172a;
+}
+.restore-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.restore-select {
+  flex: 1;
+  min-width: 260px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 13px;
+}
+.btn-restore {
+  background-color: #d97706 !important;
+  color: #ffffff !important;
+  border: 1px solid #b45309 !important;
+  padding: 9px 20px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  cursor: pointer;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: var(--display), var(--sans);
+  box-shadow: 0 2px 4px rgba(217, 119, 6, 0.25);
+}
+.btn-restore:hover {
+  background-color: #b45309 !important;
+}
+
+/* Safely Archived Roles Panel */
+.archived-roles-container {
+  background: #fdfefe;
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+.archived-roles-container h4 {
+  margin: 0 0 8px;
+  font: 700 13px var(--display);
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.archived-pill {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.backup-archived-roles {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+.backup-archived-roles-title {
+  margin: 0 0 8px;
+  color: #334155;
+  font: 700 13px/1.45 var(--display), var(--sans);
+}
+.backup-archived-roles-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 7px;
+}
+.backup-archived-roles-list .archived-pill {
+  max-width: 100%;
+  padding: 5px 8px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.table-action-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* --- Information Security Principles Section & Credential Audit Styling --- */
+.infosec-principles-section {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+.infosec-principles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+@media (max-width: 900px) {
+  .infosec-principles-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .infosec-principles-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.infosec-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  border-left: 3px solid #0284c7;
+}
+.infosec-card-header {
+  margin-bottom: 8px;
+}
+.infosec-badge {
+  display: inline-block;
+  font: 700 9px var(--mono);
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #e0f2fe;
+  color: #0369a1;
+  margin-bottom: 6px;
+}
+.infosec-badge.badge-conf { background: #fef3c7; color: #92400e; }
+.infosec-badge.badge-integ { background: #dcfce7; color: #166534; }
+.infosec-badge.badge-avail { background: #e0e7ff; color: #3730a3; }
+.infosec-badge.badge-auth { background: #fce7f3; color: #9d174d; }
+.infosec-badge.badge-priv { background: #f3e8ff; color: #6b21a8; }
+.infosec-badge.badge-defense { background: #ccfbf1; color: #115e59; }
+.infosec-card h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.infosec-desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #475569;
+  margin: 0 0 10px 0;
+}
+.infosec-metric {
+  font-size: 10.5px;
+  color: #0f172a;
+  background: #f1f5f9;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+}
+
+/* Credential Table & Password Hash Styles */
+.pwd-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  font: 700 10px var(--mono);
+  white-space: nowrap;
+}
+.hash-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cred-hash-code, .cred-salt-code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: #f1f5f9;
+  color: #0f172a;
+  padding: 3px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+.btn-copy-tiny {
+  padding: 3px 6px;
+  font: 600 10px var(--sans);
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-copy-tiny:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+.btn-crud-audit {
+  padding: 5px 9px;
+  font: 700 10.5px var(--sans);
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-crud-audit:hover {
+  background: #0369a1;
+}
+
+/* Credential Audit Detail Modal */
+.modal-box.modal-audit {
+  max-width: 680px;
+  width: 95%;
+}
+.cred-audit-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+}
+.cred-audit-info-item {
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.cred-audit-label {
+  font: 600 10px var(--mono);
+  text-transform: uppercase;
+  color: #64748b;
+  display: block;
+  margin-bottom: 4px;
+}
+.cred-audit-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.cred-audit-box {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.cred-audit-box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.cred-audit-full-code {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  word-break: break-all;
+  user-select: all;
+}
+.infosec-alert-box {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-left: 4px solid #059669;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 14px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #064e3b;
+}
+
+

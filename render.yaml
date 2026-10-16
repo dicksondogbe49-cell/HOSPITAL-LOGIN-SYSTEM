@@ -31,6 +31,16 @@ services:
         sync: false
       - key: BACKUP_EMAIL
         value: dicksondogbe49@gmail.com
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_S3_BUCKET
+        sync: false
+      - key: AWS_S3_PREFIX
+        value: database-backups
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
       - key: OTP_SHARED_EMAIL
         value: dicksondogbe49@gmail.com
 

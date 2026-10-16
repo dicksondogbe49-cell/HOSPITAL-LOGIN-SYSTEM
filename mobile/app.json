@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Secure Hospital Portal",
+    "slug": "secure-hospital-portal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "securehospital",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.securehospital.portal"
+    },
+    "android": {
+      "package": "com.securehospital.portal",
+      "usesCleartextTraffic": true
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ]
+    ]
+  }
+}
