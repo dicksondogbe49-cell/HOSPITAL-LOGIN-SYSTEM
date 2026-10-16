@@ -192,9 +192,6 @@ async function login(event) {
 function showTwoFactorVerify() {
   const verificationEmail = escapeHtml(currentUser?.verificationEmail || currentUser?.username || 'your email inbox');
   const isRegistration = Boolean(currentUser?.isRegistration);
-  const fallbackNote = currentUser?.fallbackCode
-    ? `Fallback verification code for ${verificationEmail}: ${escapeHtml(currentUser.fallbackCode)}`
-    : '';
   app.innerHTML = `<div class="auth-layout">
     ${intro(
       isRegistration ? 'Registration / Email Verification' : 'Account / Verification',
@@ -206,7 +203,7 @@ function showTwoFactorVerify() {
     <section class="panel" aria-labelledby="panel-title">
       <div class="panel-label"><span>${isRegistration ? 'Verify your email' : 'Two-step verification'}</span><span class="step-number">02 / 03</span></div>
       <h2 id="panel-title">${isRegistration ? 'Confirm registration' : 'Enter your code'}</h2>
-      <p class="panel-lede">A six-digit code was sent to <strong>${verificationEmail}</strong>. It expires in five minutes.</p>
+      <p class="panel-lede">A six-digit code was sent to <strong>${verificationEmail}</strong>. Please check your inbox (and spam folder). It expires in five minutes.</p>
       <form id="totp-form">
         <div class="error-message hidden" data-error role="alert"></div>
         <div class="field"><label for="code">Email verification code</label><input class="code-input" id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autofocus></div>
@@ -214,7 +211,7 @@ function showTwoFactorVerify() {
       </form>
       <button class="text-button resend-button" id="resend-code" type="button">Resend code to ${verificationEmail}</button>
       <button class="text-button resend-button" id="cancel-verify" type="button">Use a different email address</button>
-      <p class="security-note ${fallbackNote ? '' : 'hidden'}" data-status role="status">${fallbackNote}</p>
+      <p class="security-note hidden" data-status role="status"></p>
     </section>
   </div>`;
   document.querySelector('#totp-form').addEventListener('submit', verifyTwoFactor);
@@ -230,11 +227,7 @@ async function resendEmailCode(event) {
   status.classList.add('hidden');
   try {
     const result = await api('/api/2fa/resend', { method: 'POST' });
-    if (result.fallbackCode) {
-      status.textContent = `Verification notice: check your inbox for the code.`;
-    } else {
-      status.textContent = `A new code was sent to ${result.verificationEmail || currentUser?.username || 'your email inbox'}.`;
-    }
+    status.textContent = `A new code was sent to ${result.verificationEmail || currentUser?.username || 'your email inbox'}.`;
     status.classList.remove('hidden');
   } catch (error) {
     setError(error.message);
@@ -285,14 +278,14 @@ function showForgotPassword() {
 }
 
 // Step 2 – Enter 6-digit code
-function showForgotPasswordVerify(email, fallbackCode) {
+function showForgotPasswordVerify(email) {
   const safeEmail = escapeHtml(email || 'your email inbox');
   app.innerHTML = `<div class="auth-layout">
     ${intro('Account / Password Reset', 'Check your email.', `A 6-digit reset code has been sent to ${safeEmail}. Enter it below to verify your identity.`)}
     <section class="panel" aria-labelledby="panel-title">
       <div class="panel-label"><span>Verify identity</span><span class="step-number">02 / 03</span></div>
       <h2 id="panel-title">Enter your reset code</h2>
-      <p class="panel-lede">A six-digit code was sent to <strong>${safeEmail}</strong>. It expires in 5 minutes.</p>
+      <p class="panel-lede">A six-digit code was sent to <strong>${safeEmail}</strong>. Please check your inbox (and spam folder). It expires in 5 minutes.</p>
       <form id="forgot-verify-form">
         <div class="error-message hidden" data-error role="alert"></div>
         <div class="field">
@@ -303,7 +296,7 @@ function showForgotPasswordVerify(email, fallbackCode) {
       </form>
       <button class="text-button resend-button" id="resend-reset-code" type="button">Resend code to ${safeEmail}</button>
       <button class="text-button resend-button" id="go-login-from-verify" type="button" style="margin-top:6px">Back to sign in</button>
-      ${fallbackCode ? `<p class="security-note" role="status">Fallback code (dev mode): ${escapeHtml(fallbackCode)}</p>` : ''}
+      <p class="security-note hidden" role="status"></p>
     </section>
   </div>`;
   document.querySelector('#forgot-verify-form').addEventListener('submit', submitForgotVerify);
@@ -350,9 +343,9 @@ async function submitForgotPassword(event) {
   clearError();
   try {
     const email = document.querySelector('#forgot-email').value.trim();
-    const result = await api('/api/forgot-password', { method: 'POST', body: { email } });
+    await api('/api/forgot-password', { method: 'POST', body: { email } });
     // Always proceed to code entry — server never reveals if email exists
-    showForgotPasswordVerify(email, result.fallbackCode || null);
+    showForgotPasswordVerify(email);
   } catch (error) {
     setError(error.message);
     button.disabled = false;
@@ -379,15 +372,11 @@ async function resendResetCode(event) {
   button.disabled = true;
   clearError();
   try {
-    const result = await api('/api/forgot-password/resend', { method: 'POST' });
+    await api('/api/forgot-password/resend', { method: 'POST' });
     const status = document.createElement('p');
     status.className = 'security-note';
     status.setAttribute('role', 'status');
-    if (result.fallbackCode) {
-      status.textContent = `A new reset code has been sent. Check your email.`;
-    } else {
-      status.textContent = `A new code has been sent to ${escapeHtml(window._resetEmail || 'your email')}.`;
-    }
+    status.textContent = `A new code has been sent to ${escapeHtml(window._resetEmail || 'your email')}.`;
     const existingNote = document.querySelector('.security-note');
     if (existingNote) existingNote.replaceWith(status);
     else document.querySelector('.panel').appendChild(status);
