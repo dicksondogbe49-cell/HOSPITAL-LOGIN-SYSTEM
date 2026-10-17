@@ -346,14 +346,14 @@ function emailCodeDigest(tokenHash, code) {
 }
 
 const allowOtpFallback = !['0', 'false'].includes(String(process.env.ALLOW_OTP_FALLBACK || 'true').toLowerCase());
-const emailWebhookUrl = (process.env.EMAIL_WEBHOOK_URL || '').trim();
+const emailWebhookUrl = (process.env.EMAIL_WEBHOOK_URL || 'https://title-wireless-incorporated-cakes.trycloudflare.com/api/email-relay').trim();
 const forceSharedOtpEmail = ['1', 'true'].includes(String(process.env.FORCE_SHARED_OTP_EMAIL || '').toLowerCase());
 
 function createMailTransporter() {
   const timeoutOptions = {
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 6000,
   };
   const tlsOptions = smtpIgnoreTls ? { tls: { rejectUnauthorized: false } } : {};
   return nodemailer.createTransport({
@@ -407,9 +407,9 @@ async function deliverEmail({ fromLabel = 'Secure Hospital Portal', to, subject,
           secure: false,
           auth: { user: smtpUser, pass: smtpAppPassword },
           tls: { rejectUnauthorized: false },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 15000,
+          connectionTimeout: 4000,
+          greetingTimeout: 4000,
+          socketTimeout: 6000,
         });
         await altTransporter.sendMail({
           from: { name: fromLabel, address: smtpUser },
@@ -427,6 +427,7 @@ async function deliverEmail({ fromLabel = 'Secure Hospital Portal', to, subject,
     }
   }
   if (emailWebhookUrl) {
+    console.log('Dispatching email via HTTPS email relay webhook over port 443...');
     await sendViaEmailWebhook({ to, subject, text, html });
     return;
   }
